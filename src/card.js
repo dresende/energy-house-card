@@ -128,20 +128,82 @@ function routeEnergy(p) {
   };
 }
 
+const WORDS = {
+  solar: ["solar", "pv", "photovoltaic", "fotovoltaico", "inverter", "inversor", "producao", "production"],
+  grid: ["grid", "rede", "net", "meter", "contador", "utility"],
+  battery: ["battery", "bateria", "batt", "powerwall", "storage"],
+  home: ["home", "house", "casa", "load", "consumo", "consumption"],
+  car: ["car", "ev", "charger", "wallbox", "carregador", "carro", "vehicle", "tesla", "zappi", "easee"],
+  gadget: ["phone", "iphone", "pixel", "galaxy", "watch", "tablet", "ipad", "remote", "comando", "door", "porta", "motion", "movimento", "contact", "button", "botao"],
+};
+
+function tokens(id, stateObj) {
+  const name = stateObj?.attributes?.friendly_name || "";
+  return `${id} ${name}`.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").split(/[^a-z0-9]+/).filter(Boolean);
+}
+
+function hits(toks, words) {
+  return toks.filter((t) => words.some((w) => t === w || (w.length > 3 && t.startsWith(w)))).length;
+}
+
+// best entity of a kind whose name mentions `want` and none of `avoid`
+function guessEntity(hass, used, { domain = "sensor", deviceClass, units, want, avoid = [] }) {
+  let best = null;
+  let bestScore = 0;
+  for (const [id, s] of Object.entries(hass?.states || {})) {
+    if (!id.startsWith(`${domain}.`) || used.has(id)) continue;
+    const dc = s.attributes?.device_class;
+    const unit = s.attributes?.unit_of_measurement;
+    const kindOk = dc ? dc === deviceClass : !!units?.includes(unit);
+    if (!kindOk) continue;
+    const toks = tokens(id, s);
+    if (avoid.some((words) => hits(toks, words))) continue;
+    const score = want.reduce((sum, words) => sum + (hits(toks, words) ? 1 : 0), 0);
+    if (score === want.length && score > bestScore) {
+      best = id;
+      bestScore = score;
+    }
+  }
+  if (best) used.add(best);
+  return best;
+}
+
+function guessEntities(hass) {
+  const used = new Set();
+  const power = { deviceClass: "power", units: ["W", "kW"] };
+  const soc = { deviceClass: "battery", units: ["%"] };
+  const found = {
+    solar_power: guessEntity(hass, used, { ...power, want: [WORDS.solar], avoid: [WORDS.car, WORDS.battery] }),
+    battery_power: guessEntity(hass, used, { ...power, want: [WORDS.battery], avoid: [WORDS.car, WORDS.gadget] }),
+    car_power: guessEntity(hass, used, { ...power, want: [WORDS.car] }),
+    grid_power: guessEntity(hass, used, { ...power, want: [WORDS.grid], avoid: [WORDS.car] }),
+    home_power: guessEntity(hass, used, { ...power, want: [WORDS.home], avoid: [WORDS.car, WORDS.solar] }),
+    car_soc: guessEntity(hass, used, { ...soc, want: [WORDS.car], avoid: [WORDS.gadget] }),
+    battery_soc: guessEntity(hass, used, { ...soc, want: [WORDS.battery], avoid: [WORDS.car, WORDS.gadget] }),
+    car_plugged: guessEntity(hass, used, { domain: "binary_sensor", deviceClass: "plug", want: [WORDS.car] }),
+  };
+  return Object.fromEntries(Object.entries(found).filter(([, v]) => v));
+}
+
+async function ensureHaForm() {
+  if (customElements.get("ha-form") && customElements.get("ha-entity-picker")) return;
+  try {
+    const helpers = await window.loadCardHelpers?.();
+    const card = await helpers?.createCardElement({ type: "entities", entities: [] });
+    await card?.constructor?.getConfigElement?.();
+  } catch (e) {
+    // the YAML editor still works if HA's form components can't be preloaded
+  }
+}
+
 class EnergyHouseCard extends HTMLElement {
-  static getStubConfig() {
-    return {
-      title: "Energia",
-      entities: {
-        solar_power: "sensor.solar_power",
-        home_power: "sensor.home_power",
-        grid_power: "sensor.grid_power",
-        battery_power: "sensor.battery_power",
-        battery_soc: "sensor.battery_soc",
-        car_power: "sensor.car_charger_power",
-        car_soc: "sensor.car_battery_level",
-      },
-    };
+  static getStubConfig(hass) {
+    return { title: "Energia", entities: guessEntities(hass) };
+  }
+
+  static async getConfigElement() {
+    await ensureHaForm();
+    return document.createElement("energy-house-card-editor");
   }
 
   constructor() {
@@ -801,6 +863,163 @@ ha-card { overflow: hidden; padding: 14px 14px 12px; display: flex; flex-directi
   border: 1px solid var(--ehc-badge-border); background: color-mix(in srgb, var(--ehc-text) 4%, transparent); color: var(--ehc-text); resize: vertical; }
 @media (prefers-reduced-motion: reduce) { .ring-fg, .trail, .art, .hub { transition: none; } }
 `;
+
+const POWER = { entity: { filter: [{ domain: "sensor", device_class: "power" }] } };
+const SOC = { entity: { filter: [{ domain: "sensor", device_class: "battery" }] } };
+const ENERGY = { entity: { filter: [{ domain: "sensor", device_class: "energy" }] } };
+
+const EDITOR_ENTITY_KEYS = [
+  "solar_power", "home_power", "grid_power", "battery_power", "battery_soc",
+  "car_power", "car_soc", "car_plugged",
+  "solar_energy_today", "home_energy_today", "grid_import_today", "grid_export_today", "car_energy_today",
+];
+
+const EDITOR_SCHEMA = [
+  { name: "title", selector: { text: {} } },
+  {
+    type: "expandable", flatten: true, expanded: true, title: "Potência agora", icon: "mdi:flash",
+    schema: [
+      { name: "solar_power", selector: POWER },
+      { name: "home_power", selector: POWER },
+      { name: "grid_power", selector: POWER },
+      { name: "battery_power", selector: POWER },
+      { name: "car_power", selector: POWER },
+    ],
+  },
+  {
+    type: "expandable", flatten: true, expanded: true, title: "Carga das baterias", icon: "mdi:battery-charging-60",
+    schema: [
+      { name: "battery_soc", selector: SOC },
+      { name: "car_soc", selector: SOC },
+      { name: "car_plugged", selector: { entity: { filter: [{ domain: "binary_sensor" }] } } },
+    ],
+  },
+  {
+    type: "expandable", flatten: true, title: "Totais de hoje (opcional)", icon: "mdi:calendar-today",
+    schema: [
+      { name: "solar_energy_today", selector: ENERGY },
+      { name: "home_energy_today", selector: ENERGY },
+      { name: "grid_import_today", selector: ENERGY },
+      { name: "grid_export_today", selector: ENERGY },
+      { name: "car_energy_today", selector: ENERGY },
+    ],
+  },
+  {
+    type: "expandable", flatten: true, title: "Opções", icon: "mdi:cog",
+    schema: [
+      { name: "invert_grid", selector: { boolean: {} } },
+      { name: "invert_battery", selector: { boolean: {} } },
+      { name: "show_vegetation", selector: { boolean: {} } },
+      { name: "full_screen", selector: { boolean: {} } },
+      { name: "height", selector: { text: {} } },
+      { name: "flow_threshold", selector: { number: { min: 0, max: 500, step: 5, mode: "box", unit_of_measurement: "W" } } },
+      { name: "edit_positions", selector: { boolean: {} } },
+    ],
+  },
+];
+
+const EDITOR_LABELS = {
+  title: "Título",
+  solar_power: "Produção solar",
+  home_power: "Consumo da casa",
+  grid_power: "Rede elétrica",
+  battery_power: "Bateria da casa",
+  car_power: "Carregamento do carro",
+  battery_soc: "Carga da bateria da casa (SOC)",
+  car_soc: "Carga do carro (SOC)",
+  car_plugged: "Carro ligado à tomada",
+  solar_energy_today: "Produzido hoje",
+  home_energy_today: "Consumido hoje",
+  grid_import_today: "Importado hoje",
+  grid_export_today: "Exportado hoje",
+  car_energy_today: "Carro hoje",
+  invert_grid: "Inverter sinal da rede",
+  invert_battery: "Inverter sinal da bateria",
+  show_vegetation: "Mostrar jardim",
+  full_screen: "Ocupar o ecrã todo",
+  height: "Altura do card",
+  flow_threshold: "Mínimo para animar o fluxo",
+  edit_positions: "Modo de posicionamento",
+};
+
+const EDITOR_HELPERS = {
+  home_power: "Consumo total, incluindo o carro. Se ficar vazio, é calculado a partir de solar, bateria e rede.",
+  grid_power: "Positivo a importar, negativo a exportar. Se o teu for ao contrário, liga \"Inverter sinal da rede\".",
+  battery_power: "Positivo a descarregar, negativo a carregar. Se o teu for ao contrário, liga \"Inverter sinal da bateria\".",
+  car_power: "Sem esta entidade, o carro e o telheiro não aparecem.",
+  height: "Ex.: 600px ou 80vh. Vazio = altura automática.",
+  edit_positions: "Arrasta os valores e os fluxos no card e copia o YAML gerado.",
+};
+
+class EnergyHouseCardEditor extends HTMLElement {
+  set hass(hass) {
+    this._hass = hass;
+    if (this._form) this._form.hass = hass;
+  }
+
+  setConfig(config) {
+    this._config = config || {};
+    this._render();
+  }
+
+  _data() {
+    const c = this._config;
+    return {
+      title: c.title ?? "Energia",
+      ...(c.entities || {}),
+      invert_grid: !!c.invert_grid,
+      invert_battery: !!c.invert_battery,
+      show_vegetation: c.show?.vegetation !== false,
+      full_screen: !!c.full_screen,
+      height: c.height ?? "",
+      flow_threshold: c.flow_threshold ?? 10,
+      edit_positions: !!c.edit_positions,
+    };
+  }
+
+  _render() {
+    if (!this._form) {
+      this._form = document.createElement("ha-form");
+      this._form.computeLabel = (s) => EDITOR_LABELS[s.name] ?? s.name;
+      this._form.computeHelper = (s) => EDITOR_HELPERS[s.name];
+      this._form.addEventListener("value-changed", (e) => this._changed(e.detail.value));
+      this.appendChild(this._form);
+    }
+    this._form.hass = this._hass;
+    this._form.schema = EDITOR_SCHEMA;
+    this._form.data = this._data();
+  }
+
+  _changed(v) {
+    const config = { ...this._config, title: v.title };
+    const entities = { ...(this._config.entities || {}) };
+    for (const k of EDITOR_ENTITY_KEYS) {
+      if (v[k]) entities[k] = v[k];
+      else delete entities[k];
+    }
+    config.entities = entities;
+    for (const k of ["invert_grid", "invert_battery", "full_screen", "edit_positions"]) {
+      if (v[k]) config[k] = true;
+      else delete config[k];
+    }
+    if (v.height) config.height = v.height;
+    else delete config.height;
+    if (v.flow_threshold != null && v.flow_threshold !== 10) config.flow_threshold = v.flow_threshold;
+    else delete config.flow_threshold;
+    const show = { ...(this._config.show || {}) };
+    if (v.show_vegetation === false) show.vegetation = false;
+    else delete show.vegetation;
+    if (Object.keys(show).length) config.show = show;
+    else delete config.show;
+
+    this._config = config;
+    this.dispatchEvent(new CustomEvent("config-changed", { detail: { config }, bubbles: true, composed: true }));
+  }
+}
+
+if (!customElements.get("energy-house-card-editor")) {
+  customElements.define("energy-house-card-editor", EnergyHouseCardEditor);
+}
 
 if (!customElements.get("energy-house-card")) {
   customElements.define("energy-house-card", EnergyHouseCard);

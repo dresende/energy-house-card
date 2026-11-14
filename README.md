@@ -16,7 +16,11 @@ Card para o Home Assistant com uma casa isométrica e os fluxos de energia anima
 2. Em **Definições → Painéis → ⋮ → Recursos**, adiciona `/local/energy-house-card.js` com o tipo **Módulo JavaScript**.
 3. Recarrega o browser e adiciona um card manual com o YAML abaixo.
 
-## Configuração mínima
+## Editor visual
+
+Em **Editar dashboard → Adicionar card**, procura "Energy House Card". O card já vem com os teus sensores pré-preenchidos quando os nomes os denunciam (solar/pv/inversor, grid/rede, battery/bateria, car/ev/wallbox, home/casa/consumo). No editor, cada campo só lista sensores do tipo certo: potência para os W, bateria para os SOC e energia para os totais de hoje. O sinal da rede e da bateria inverte-se com um interruptor. As posições dos valores e dos fluxos (`places`, `flows`) continuam no YAML, geradas pelo modo de posicionamento.
+
+## Configuração em YAML
 
 ```yaml
 type: custom:energy-house-card
