@@ -1,4 +1,5 @@
-/*! energy-house-card v2.0.0 */
+/*! energy-house-card v2.1.0 */
+const VERSION = "2.1.0";
 const HOUSE_SVG = "__HOUSE_SVG__";
 const VB = { x: 170, y: 40, w: 960, h: 590 };
 const HUB = [43.2, 51.7];
@@ -1029,5 +1030,7 @@ if (!customElements.get("energy-house-card")) {
     name: "Energy House Card",
     description: "Casa isométrica com fluxos de energia: solar, bateria, rede e carro.",
     preview: true,
+    documentationURL: "https://github.com/dresende/energy-house-card",
   });
+  console.info(`%c ENERGY-HOUSE-CARD %c v${VERSION} `, "color:#fff;background:#2fb36d;font-weight:600", "color:#2fb36d;background:transparent");
 }
