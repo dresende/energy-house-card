@@ -1,0 +1,153 @@
+<!doctype html>
+<html lang="pt">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Energy House Card · preview</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@mdi/font@7.4.47/css/materialdesignicons.min.css">
+<style>
+  :root {
+    --primary-color: #03a9f4;
+    --primary-text-color: #212121;
+    --secondary-text-color: #727272;
+    --card-background-color: #ffffff;
+    --primary-background-color: #fafafa;
+    --divider-color: rgba(0,0,0,.12);
+  }
+  body.dark {
+    --primary-text-color: #e1e1e1;
+    --secondary-text-color: #9b9b9b;
+    --card-background-color: #1c1c1c;
+    --primary-background-color: #111111;
+    --divider-color: rgba(225,225,225,.12);
+  }
+  body { margin: 0; background: var(--primary-background-color); color: var(--primary-text-color); font-family: Roboto, system-ui, sans-serif; }
+  main { max-width: 1100px; margin: 0 auto; padding: 20px 16px; display: grid; grid-template-columns: minmax(0, 1fr) 280px; gap: 20px; align-items: start; }
+  @media (max-width: 760px) { main { grid-template-columns: 1fr; } }
+  .controls { display: flex; flex-direction: column; gap: 12px; font-size: 13px; background: var(--card-background-color); border-radius: 12px; padding: 14px; box-shadow: 0 1px 3px rgba(0,0,0,.12); }
+  .controls h2 { margin: 0; font-size: 14px; }
+  .row { display: flex; flex-direction: column; gap: 3px; }
+  .row label { display: flex; justify-content: space-between; color: var(--secondary-text-color); }
+  .row output { color: var(--primary-text-color); font-variant-numeric: tabular-nums; }
+  .btns { display: flex; flex-wrap: wrap; gap: 6px; }
+  .btns button { font: inherit; padding: 6px 10px; border-radius: 8px; border: 1px solid var(--divider-color); background: transparent; color: inherit; cursor: pointer; }
+  .btns button[aria-pressed="true"] { background: var(--primary-color); color: #fff; border-color: transparent; }
+  .narrow { max-width: 400px; }
+  body.full main { max-width: none; grid-template-columns: minmax(0, 1fr) 240px; padding-top: 8px; }
+</style>
+<script>
+  // stand-ins for Home Assistant's own elements
+  customElements.define("ha-card", class extends HTMLElement {
+    constructor() {
+      super();
+      this.attachShadow({ mode: "open" }).innerHTML =
+        `<style>:host{display:block;background:var(--ha-card-background,var(--card-background-color));border-radius:var(--ha-card-border-radius,12px);box-shadow:var(--ha-card-box-shadow,0 1px 3px rgba(0,0,0,.12));color:var(--primary-text-color);font-family:Roboto,system-ui,sans-serif}</style><slot></slot>`;
+    }
+  });
+  customElements.define("ha-icon", class extends HTMLElement {
+    static get observedAttributes() { return ["icon"]; }
+    constructor() {
+      super();
+      this.attachShadow({ mode: "open" });
+    }
+    attributeChangedCallback() {
+      const name = (this.getAttribute("icon") || "").replace("mdi:", "");
+      this.shadowRoot.innerHTML = `<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@mdi/font@7.4.47/css/materialdesignicons.min.css"><style>:host{display:inline-flex;line-height:1}i{font-size:var(--mdc-icon-size,24px)}</style><i class="mdi mdi-${name}"></i>`;
+    }
+  });
+</script>
+<script src="energy-house-card.js"></script>
+</head>
+<body>
+<main>
+  <div id="wrap"></div>
+  <div class="controls">
+    <h2>Simulação</h2>
+    <div class="row"><label>Solar <output id="o_solar"></output></label><input type="range" id="solar" min="0" max="8000" step="50" value="4200"></div>
+    <div class="row"><label>Consumo casa (sem carro) <output id="o_house"></output></label><input type="range" id="house" min="0" max="6000" step="50" value="850"></div>
+    <div class="row"><label>Bateria (+ descarrega / − carrega) <output id="o_batt"></output></label><input type="range" id="batt" min="-5000" max="5000" step="50" value="-1200"></div>
+    <div class="row"><label>Carro <output id="o_car"></output></label><input type="range" id="car" min="0" max="11000" step="100" value="2300"></div>
+    <div class="row"><label>SOC bateria <output id="o_bsoc"></output></label><input type="range" id="bsoc" min="0" max="100" value="64"></div>
+    <div class="row"><label>SOC carro <output id="o_csoc"></output></label><input type="range" id="csoc" min="0" max="100" value="41"></div>
+    <div class="row"><label>Rede (calculada) <output id="o_grid"></output></label></div>
+    <div class="btns">
+      <button type="button" id="b_theme" aria-pressed="false">Tema escuro</button>
+      <button type="button" id="b_edit" aria-pressed="false">Posicionar</button>
+      <button type="button" id="b_narrow" aria-pressed="false">400 px</button>
+      <button type="button" id="b_full" aria-pressed="false">Ecrã inteiro</button>
+      <button type="button" id="b_night">Noite</button>
+      <button type="button" id="b_nocar" aria-pressed="false">Sem carro</button>
+      <button type="button" id="b_nobatt" aria-pressed="false">Sem bateria</button>
+    </div>
+  </div>
+</main>
+<script>
+  const $ = (id) => document.getElementById(id);
+  let dark = false, edit = false, noCar = false, noBatt = false, full = false;
+  const baseConfig = {
+    type: "custom:energy-house-card",
+    title: "Energia",
+    entities: {
+      solar_power: "sensor.solar_power",
+      home_power: "sensor.home_power",
+      grid_power: "sensor.grid_power",
+      battery_power: "sensor.battery_power",
+      battery_soc: "sensor.battery_soc",
+      car_power: "sensor.car_charger_power",
+      car_soc: "sensor.car_battery_level",
+      car_plugged: "binary_sensor.car_plugged",
+      solar_energy_today: "sensor.solar_energy_today",
+      home_energy_today: "sensor.home_energy_today",
+      grid_import_today: "sensor.grid_import_today",
+      grid_export_today: "sensor.grid_export_today",
+    },
+  };
+  let card;
+  function mount() {
+    card = document.createElement("energy-house-card");
+    const cfg = structuredClone(baseConfig);
+    cfg.edit_positions = edit;
+    cfg.full_screen = full;
+    if (noCar) ["car_power", "car_soc", "car_plugged"].forEach((k) => delete cfg.entities[k]);
+    if (noBatt) ["battery_power", "battery_soc"].forEach((k) => delete cfg.entities[k]);
+    card.setConfig(cfg);
+    $("wrap").replaceChildren(card);
+    push();
+  }
+  function st(state, unit, attrs = {}) { return { state: String(state), attributes: { unit_of_measurement: unit, ...attrs } }; }
+  function push() {
+    const solar = +$("solar").value, house = +$("house").value;
+    const batt = noBatt ? 0 : +$("batt").value, car = noCar ? 0 : +$("car").value;
+    const home = house + car;
+    const grid = home - solar - batt;
+    $("o_solar").value = solar + " W"; $("o_house").value = house + " W"; $("o_batt").value = batt + " W";
+    $("o_car").value = car + " W"; $("o_bsoc").value = $("bsoc").value + "%"; $("o_csoc").value = $("csoc").value + "%";
+    $("o_grid").value = (grid >= 0 ? "importa " : "exporta ") + Math.abs(grid) + " W";
+    const states = {
+      "sensor.solar_power": st(solar, "W"),
+      "sensor.home_power": st((home / 1000).toFixed(3), "kW"),
+      "sensor.grid_power": st(grid, "W"),
+      "sensor.battery_power": st(batt, "W"),
+      "sensor.battery_soc": st($("bsoc").value, "%"),
+      "sensor.solar_energy_today": st("18.4", "kWh"),
+      "sensor.home_energy_today": st("11.2", "kWh"),
+      "sensor.grid_import_today": st("2.1", "kWh"),
+      "sensor.grid_export_today": st("6900", "Wh"),
+    };
+    states["sensor.car_charger_power"] = st(car, "W");
+    states["sensor.car_battery_level"] = st($("csoc").value, "%");
+    states["binary_sensor.car_plugged"] = st(car > 0 ? "on" : "off", "");
+    card.hass = { states, themes: { darkMode: dark } };
+  }
+  ["solar", "house", "batt", "car", "bsoc", "csoc"].forEach((id) => $(id).addEventListener("input", push));
+  $("b_theme").onclick = (e) => { dark = !dark; document.body.classList.toggle("dark", dark); e.target.setAttribute("aria-pressed", dark); push(); };
+  $("b_edit").onclick = (e) => { edit = !edit; e.target.setAttribute("aria-pressed", edit); mount(); };
+  $("b_full").onclick = (e) => { full = !full; e.target.setAttribute("aria-pressed", full); document.body.classList.toggle("full", full); mount(); };
+  $("b_narrow").onclick = (e) => { const on = $("wrap").classList.toggle("narrow"); e.target.setAttribute("aria-pressed", on); };
+  $("b_nocar").onclick = (e) => { noCar = !noCar; e.target.setAttribute("aria-pressed", noCar); mount(); };
+  $("b_nobatt").onclick = (e) => { noBatt = !noBatt; e.target.setAttribute("aria-pressed", noBatt); mount(); };
+  $("b_night").onclick = () => { $("solar").value = 0; $("house").value = 650; $("batt").value = 2400; $("car").value = 3700; push(); };
+  mount();
+</script>
+</body>
+</html>
