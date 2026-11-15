@@ -1,5 +1,5 @@
-/*! energy-house-card v2.1.1 */
-const VERSION = "2.1.1";
+/*! energy-house-card v2.2.0 */
+const VERSION = "2.2.0";
 const HOUSE_SVG = "__HOUSE_SVG__";
 const VB = { x: 170, y: 40, w: 960, h: 590 };
 const HUB = [43.2, 51.7];
@@ -39,9 +39,49 @@ const DEFAULT_FLOWS = {
   solar_home:    [[49.5, 23.7], [47.7, 39], [43.2, 51.7]],
   solar_battery: [[46.9, 25.4], [38.5, 30.8], [29.4, 34.1], [29.4, 37.6], [31.6, 39.8], [31.6, 44.4]],
   battery_home:  [[30.4, 50.5], [36.8, 56.3], [43.2, 51.7]],
-  home_car:      [[43.2, 51.7], [34.4, 47.1], [25.9, 45.1], [17.7, 49.2], [11.9, 54.4]],
+  home_car:      [[43.2, 51.7], [34.4, 47.1], [25.9, 45.1], [16.5, 50]],
   grid_home:     [[94.3, 12.7], [85.4, 22], [73.1, 27.5], [58.3, 35.6], [43.2, 51.7]],
 };
+
+// recolourable parts: gradients and flat colours drawn as shades of `base`
+const PALETTE = {
+  walls: {
+    base: "#c9a986",
+    gradients: ["woodRight", "woodLeft"],
+    colors: ["#856546", "#a6825c", "#6e543b"],
+  },
+  deck: {
+    base: "#b89b7c",
+    gradients: ["deckGrad"],
+    colors: ["#8c6f52", "#7c6248", "#5e4934", "#9c8062", "#634d38", "#8c7054", "#4f3d2b", "#6e563e"],
+  },
+  car: {
+    base: "#b9c0c6",
+    gradients: ["eqsUpperBody", "eqsFlankGrad", "eqsLowerSculpt"],
+    colors: ["#8e969e"],
+  },
+};
+const DEFAULT_COLORS = { walls: "#f2f0eb" };
+const defaultColor = (part) => DEFAULT_COLORS[part] ?? PALETTE[part].base;
+
+function toRgb(c) {
+  if (Array.isArray(c) && c.length === 3) return c.map(Number);
+  const m = /^#?([0-9a-f]{3}|[0-9a-f]{6})$/i.exec(String(c ?? "").trim());
+  if (!m) return null;
+  const h = m[1].length === 3 ? m[1].replace(/./g, "$&$&") : m[1];
+  return [0, 2, 4].map((i) => parseInt(h.slice(i, i + 2), 16));
+}
+
+const toHex = (rgb) => "#" + rgb.map((v) => Math.round(Math.max(0, Math.min(255, v))).toString(16).padStart(2, "0")).join("");
+const lum = ([r, g, b]) => 0.2126 * r + 0.7152 * g + 0.0722 * b;
+
+// the original colour's brightness relative to the part's base, applied to the new base
+function shade(target, orig, base) {
+  const f = lum(toRgb(orig)) / lum(toRgb(base));
+  if (f <= 1) return toHex(target.map((v) => v * f));
+  const t = Math.min(1, (f - 1) * 1.5);
+  return toHex(target.map((v) => v + (255 - v) * t));
+}
 
 const toSvg = ([x, y]) => [VB.x + (x / 100) * VB.w, VB.y + (y / 100) * VB.h];
 
@@ -76,6 +116,7 @@ function toKwh(stateObj) {
 function fmtPower(w) {
   if (w == null) return "—";
   const a = Math.abs(w);
+  if (Math.round(a) === 0) return "—";
   if (a >= 1000) return `${(a / 1000).toFixed(a >= 10000 ? 1 : 2)} kW`;
   return `${Math.round(a)} W`;
 }
@@ -368,6 +409,7 @@ class EnergyHouseCard extends HTMLElement {
       hub: root.getElementById("hub"),
     };
     this._applyParts();
+    this._applyColors();
     this._buildFlows();
     this._buildPlacesDom();
     if (c.edit_positions) {
@@ -391,6 +433,23 @@ class EnergyHouseCard extends HTMLElement {
       for (const child of battery.children) {
         if (child.id === "house-wallbox") continue;
         child.style.display = s.battery === false ? "none" : "";
+      }
+    }
+  }
+
+  _applyColors() {
+    const svg = this._els.svg;
+    const chosen = { ...DEFAULT_COLORS, ...(this._config.colors || {}) };
+    for (const [part, pal] of Object.entries(PALETTE)) {
+      const target = toRgb(chosen[part]);
+      if (!target) continue;
+      for (const id of pal.gradients) {
+        svg.querySelectorAll(`#${id} stop`).forEach((s) => s.setAttribute("stop-color", shade(target, s.getAttribute("stop-color"), pal.base)));
+      }
+      for (const c of pal.colors) {
+        const nc = shade(target, c, pal.base);
+        svg.querySelectorAll(`[fill="${c}"]`).forEach((el) => el.setAttribute("fill", nc));
+        svg.querySelectorAll(`[stroke="${c}"]`).forEach((el) => el.setAttribute("stroke", nc));
       }
     }
   }
@@ -757,7 +816,7 @@ const STYLE = `
 :host {
   --ehc-solar: #f2a516;
   --ehc-battery: #2fb36d;
-  --ehc-grid: #7b8ba3;
+  --ehc-grid: #e5484d;
   --ehc-car: #3d8bfd;
   --ehc-home: #9a6cf0;
   --ehc-accent: var(--primary-color, #03a9f4);
@@ -771,7 +830,7 @@ const STYLE = `
 :host([dark]) {
   --ehc-solar: #ffbe3d;
   --ehc-battery: #3fd18a;
-  --ehc-grid: #9fb0c9;
+  --ehc-grid: #ff6b6f;
   --ehc-car: #5fa2ff;
   --ehc-home: #b391ff;
   --ehc-badge-bg: color-mix(in srgb, var(--card-background-color, #1c1c1c) 78%, transparent);
@@ -888,6 +947,14 @@ const EDITOR_SCHEMA = [
     ],
   },
   {
+    type: "expandable", flatten: true, title: "Cores da casa", icon: "mdi:palette",
+    schema: [
+      { name: "walls_color", selector: { color_rgb: {} } },
+      { name: "deck_color", selector: { color_rgb: {} } },
+      { name: "car_color", selector: { color_rgb: {} } },
+    ],
+  },
+  {
     type: "expandable", flatten: true, title: "Opções", icon: "mdi:cog",
     schema: [
       { name: "invert_grid", selector: { boolean: {} } },
@@ -915,6 +982,9 @@ const EDITOR_LABELS = {
   grid_import_today: "Importado hoje",
   grid_export_today: "Exportado hoje",
   car_energy_today: "Carro hoje",
+  walls_color: "Paredes",
+  deck_color: "Alpendre",
+  car_color: "Carro",
   invert_grid: "Inverter sinal da rede",
   invert_battery: "Inverter sinal da bateria",
   show_vegetation: "Mostrar jardim",
@@ -948,6 +1018,7 @@ class EnergyHouseCardEditor extends HTMLElement {
     const c = this._config;
     return {
       ...(c.entities || {}),
+      ...Object.fromEntries(Object.keys(PALETTE).map((p) => [`${p}_color`, toRgb(c.colors?.[p] ?? defaultColor(p))])),
       invert_grid: !!c.invert_grid,
       invert_battery: !!c.invert_battery,
       show_vegetation: c.show?.vegetation !== false,
@@ -988,6 +1059,16 @@ class EnergyHouseCardEditor extends HTMLElement {
     else delete config.height;
     if (v.flow_threshold != null && v.flow_threshold !== 10) config.flow_threshold = v.flow_threshold;
     else delete config.flow_threshold;
+    const colors = { ...(this._config.colors || {}) };
+    for (const p of Object.keys(PALETTE)) {
+      const rgb = toRgb(v[`${p}_color`]);
+      const hex = rgb && toHex(rgb);
+      if (!hex || hex === toHex(toRgb(defaultColor(p)))) delete colors[p];
+      else colors[p] = hex;
+    }
+    if (Object.keys(colors).length) config.colors = colors;
+    else delete config.colors;
+
     const show = { ...(this._config.show || {}) };
     if (v.show_vegetation === false) show.vegetation = false;
     else delete show.vegetation;

@@ -49,6 +49,7 @@ Se a tua rede ou bateria usarem o sinal ao contrário, acrescenta `invert_grid: 
 |---|---|---|
 | `full_screen` | `false` | O card ocupa a altura do ecrã (fica melhor numa vista do tipo **Painel**) |
 | `height` | — | Altura fixa, ex. `600px` ou `80vh`; a imagem cresce até caber |
+| `colors` | paredes brancas | Cores da casa: `walls`, `deck` (alpendre) e `car`, em hex, ex. `colors: { walls: "#3b4148", car: "#1f3a6b" }`. O sombreado de cada face é calculado a partir da cor escolhida |
 | `show` | conforme as entidades | Partes do desenho: `solar`, `battery`, `car`, `grid`, `vegetation` (ex. `show: { vegetation: false }`) |
 | `flow_threshold` | `10` | Abaixo destes W o fluxo fica parado |
 | `edit_positions` | `false` | Liga o modo de posicionamento (ver abaixo) |
