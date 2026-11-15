@@ -1,5 +1,5 @@
-/*! energy-house-card v2.3.0 */
-const VERSION = "2.3.0";
+/*! energy-house-card v2.3.1 */
+const VERSION = "2.3.1";
 const HOUSE_SVG = "__HOUSE_SVG__";
 const VB = { x: 170, y: 40, w: 960, h: 590 };
 const HUB = [43.2, 51.7];
@@ -1103,12 +1103,10 @@ class EnergyHouseCardEditor extends HTMLElement {
   _render() {
     if (!this._form) {
       this._form = document.createElement("ha-form");
-      this._form.computeLabel = (s) => {
-        const role = s.name.endsWith("_name") && s.name.slice(0, -5);
-        if (role && I18N.en.roles[role]) return I18N[this._lang].roles[role];
-        return this._et.labels[s.name] ?? s.name;
-      };
-      this._form.computeHelper = (s) => (s.name.endsWith("_name") ? this._et.helpers.names : this._et.helpers[s.name]);
+      // expandable groups reach these too, and have no name
+      const role = (s) => (s.name?.endsWith("_name") && I18N.en.roles[s.name.slice(0, -5)] ? s.name.slice(0, -5) : null);
+      this._form.computeLabel = (s) => (role(s) ? I18N[this._lang].roles[role(s)] : this._et.labels[s.name] ?? s.name);
+      this._form.computeHelper = (s) => (role(s) ? this._et.helpers.names : this._et.helpers[s.name]);
       this._form.addEventListener("value-changed", (e) => this._changed(e.detail.value));
       this.appendChild(this._form);
     }
