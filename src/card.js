@@ -1,5 +1,5 @@
-/*! energy-house-card v2.4.0 */
-const VERSION = "2.4.0";
+/*! energy-house-card v2.4.1 */
+const VERSION = "2.4.1";
 const HOUSE_SVG = "__HOUSE_SVG__";
 const VB = { x: 170, y: 40, w: 960, h: 590 };
 const HUB = [43.2, 51.7];
@@ -401,8 +401,13 @@ class EnergyHouseCard extends HTMLElement {
 
   _render() {
     const c = this._config;
-    const height = c.full_screen ? "calc(100vh - var(--header-height, 56px) - 16px)" : c.height;
+    // a height set in the sections Layout tab arrives as grid rows: fill that cell
+    const rows = c.grid_options?.rows ?? c.layout_options?.grid_rows;
+    const fill = typeof rows === "number" && !c.height && !c.full_screen;
+    const h = /^\d+(\.\d+)?$/.test(String(c.height ?? "").trim()) ? `${String(c.height).trim()}px` : c.height;
+    const height = c.full_screen ? "calc(100vh - var(--header-height, 56px) - 16px)" : fill ? "100%" : h;
     this.toggleAttribute("sized", !!height);
+    this.toggleAttribute("fill", fill);
     this.toggleAttribute("static", !!c.static_flows);
     this.style.setProperty("--ehc-height", height || "auto");
     this.style.setProperty("--ehc-ar", String(VB.w / VB.h));
@@ -885,6 +890,7 @@ const STYLE = `
 ha-card { overflow: hidden; padding: 14px 14px 12px; display: flex; flex-direction: column; gap: 6px; color: var(--ehc-text); }
 
 .stage-wrap { display: flex; justify-content: center; align-items: center; min-width: 0; }
+:host([fill]) { height: 100%; }
 :host([sized]) ha-card { height: var(--ehc-height); box-sizing: border-box; }
 :host([sized]) .stage-wrap { flex: 1; min-height: 0; container-type: size; }
 :host([sized]) .stage { width: min(100cqw, 100cqh * var(--ehc-ar)); }
