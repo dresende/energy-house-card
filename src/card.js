@@ -1,5 +1,5 @@
-/*! energy-house-card v2.1.0 */
-const VERSION = "2.1.0";
+/*! energy-house-card v2.1.1 */
+const VERSION = "2.1.1";
 const HOUSE_SVG = "__HOUSE_SVG__";
 const VB = { x: 170, y: 40, w: 960, h: 590 };
 const HUB = [43.2, 51.7];
@@ -28,11 +28,11 @@ const ROLES = {
 };
 
 const DEFAULT_PLACES = {
-  solar:   { x: 49, y: 6,  align: "center" },
+  solar:   { x: 49, y: 0,  align: "center", valign: "top" },
   home:    { x: 62, y: 70, align: "center" },
   grid:    { x: 86, y: 40, align: "center" },
   battery: { x: 25, y: 66, align: "center" },
-  car:     { x: 9,  y: 74, align: "center" },
+  car:     { x: 15, y: 33, align: "center" },
 };
 
 const DEFAULT_FLOWS = {
@@ -199,7 +199,7 @@ async function ensureHaForm() {
 
 class EnergyHouseCard extends HTMLElement {
   static getStubConfig(hass) {
-    return { title: "Energia", entities: guessEntities(hass) };
+    return { entities: guessEntities(hass) };
   }
 
   static async getConfigElement() {
@@ -220,7 +220,6 @@ class EnergyHouseCard extends HTMLElement {
   setConfig(config) {
     if (!config || typeof config !== "object") throw new Error("Configuração inválida");
     this._config = {
-      title: "Energia",
       flow_threshold: 10,
       invert_grid: false,
       invert_battery: false,
@@ -329,10 +328,6 @@ class EnergyHouseCard extends HTMLElement {
     this.shadowRoot.innerHTML = `
       <style>${STYLE}</style>
       <ha-card>
-        <div class="head">
-          <div class="title">${esc(c.title)}</div>
-          <div class="chips" id="chips"></div>
-        </div>
         <div class="stage-wrap">
         <div class="stage" id="stage">
           <svg class="scene" viewBox="${VB.x} ${VB.y} ${VB.w} ${VB.h}" preserveAspectRatio="xMidYMid meet" id="svg" role="img" aria-label="Casa e fluxos de energia">
@@ -368,7 +363,6 @@ class EnergyHouseCard extends HTMLElement {
       dots: root.getElementById("dots"),
       handles: root.getElementById("handles"),
       places: root.getElementById("places"),
-      chips: root.getElementById("chips"),
       foot: root.getElementById("foot"),
       yaml: root.getElementById("yaml"),
       hub: root.getElementById("hub"),
@@ -476,7 +470,7 @@ class EnergyHouseCard extends HTMLElement {
       const name = p.name ?? meta.name ?? "";
       const ring = p.role === "battery" || p.role === "car";
       return `
-        <button type="button" class="place align-${esc(p.align || "center")} ${this._config.edit_positions ? "editable" : ""}"
+        <button type="button" class="place align-${esc(p.align || "center")} valign-${esc(p.valign || "center")} ${this._config.edit_positions ? "editable" : ""}"
           data-id="${p.id}" style="left:${p.x}%;top:${p.y}%;--c:${esc(color)}">
           <span class="ico">
             ${ring ? `<svg class="ring" viewBox="0 0 36 36"><circle class="ring-bg" cx="18" cy="18" r="16"/><circle class="ring-fg" cx="18" cy="18" r="16" pathLength="100" stroke-dasharray="0 100"/></svg>` : ""}
@@ -585,21 +579,9 @@ class EnergyHouseCard extends HTMLElement {
     }
     this._els.hub.classList.toggle("on", Object.values(this._flowState).some((s) => s.w >= th));
 
-    this._renderChips(powers, routed);
     this._renderFoot();
     if (this._reduced()) this._drawFrame(0);
     this._loop();
-  }
-
-  _renderChips(powers, routed) {
-    const chips = [];
-    const L = routed.load;
-    const imp = Math.max(0, powers.grid ?? 0);
-    if (L > 0 && powers.grid != null) {
-      const self = Math.round(Math.max(0, Math.min(1, 1 - imp / L)) * 100);
-      chips.push(`<span class="chip" title="Parte do consumo atual coberta por solar e bateria">${self}% autossuficiente</span>`);
-    }
-    this._els.chips.innerHTML = chips.join("");
   }
 
   _renderFoot() {
@@ -748,6 +730,7 @@ class EnergyHouseCard extends HTMLElement {
       if (p.color) lines.push(`    color: ${q(p.color)}`);
       if (p.decimals != null) lines.push(`    decimals: ${p.decimals}`);
       if (p.align && p.align !== "center") lines.push(`    align: ${p.align}`);
+      if (p.valign && p.valign !== "center") lines.push(`    valign: ${p.valign}`);
       lines.push(`    x: ${p.x}`, `    y: ${p.y}`);
     }
     lines.push("flows:");
@@ -794,11 +777,8 @@ const STYLE = `
   --ehc-badge-bg: color-mix(in srgb, var(--card-background-color, #1c1c1c) 78%, transparent);
   --ehc-badge-border: color-mix(in srgb, #fff 12%, transparent);
 }
+[hidden] { display: none !important; }
 ha-card { overflow: hidden; padding: 14px 14px 12px; display: flex; flex-direction: column; gap: 6px; color: var(--ehc-text); }
-.head { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-height: 28px; }
-.title { font-size: 1.15rem; font-weight: 500; letter-spacing: .01em; }
-.chips { display: flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end; }
-.chip { font-size: .75rem; padding: 3px 9px; border-radius: 999px; background: color-mix(in srgb, var(--ehc-battery) 14%, transparent); color: var(--ehc-text); font-variant-numeric: tabular-nums; white-space: nowrap; }
 
 .stage-wrap { display: flex; justify-content: center; align-items: center; min-width: 0; }
 :host([sized]) ha-card { height: var(--ehc-height); box-sizing: border-box; }
@@ -821,7 +801,7 @@ ha-card { overflow: hidden; padding: 14px 14px 12px; display: flex; flex-directi
 .handle.dragging { cursor: grabbing; fill: var(--ehc-accent); }
 
 .place {
-  all: unset; box-sizing: border-box; position: absolute; transform: translate(-50%, -50%);
+  all: unset; box-sizing: border-box; position: absolute;
   display: flex; align-items: center; gap: .45em; padding: .3em .7em .3em .3em;
   font-size: clamp(10px, 1.9cqw, 24px); line-height: 1.15;
   background: var(--ehc-badge-bg); border: 1px solid var(--ehc-badge-border); border-radius: 999px;
@@ -829,8 +809,11 @@ ha-card { overflow: hidden; padding: 14px 14px 12px; display: flex; flex-directi
   box-shadow: 0 2px 10px rgba(0,0,0,.12); cursor: pointer; white-space: nowrap; color: var(--ehc-text);
   transition: box-shadow .2s, opacity .3s;
 }
-.place.align-left { transform: translate(0, -50%); }
-.place.align-right { transform: translate(-100%, -50%); }
+.place { --tx: -50%; --ty: -50%; transform: translate(var(--tx), var(--ty)); }
+.place.align-left { --tx: 0; }
+.place.align-right { --tx: -100%; }
+.place.valign-top { --ty: 0; }
+.place.valign-bottom { --ty: -100%; }
 .place:focus-visible { outline: 2px solid var(--ehc-accent); outline-offset: 2px; }
 .place:hover { box-shadow: 0 3px 14px rgba(0,0,0,.2); }
 .place.editable { cursor: grab; outline: 1.5px dashed var(--ehc-accent); outline-offset: 2px; touch-action: none; }
@@ -876,7 +859,6 @@ const EDITOR_ENTITY_KEYS = [
 ];
 
 const EDITOR_SCHEMA = [
-  { name: "title", selector: { text: {} } },
   {
     type: "expandable", flatten: true, expanded: true, title: "Potência agora", icon: "mdi:flash",
     schema: [
@@ -920,7 +902,6 @@ const EDITOR_SCHEMA = [
 ];
 
 const EDITOR_LABELS = {
-  title: "Título",
   solar_power: "Produção solar",
   home_power: "Consumo da casa",
   grid_power: "Rede elétrica",
@@ -966,7 +947,6 @@ class EnergyHouseCardEditor extends HTMLElement {
   _data() {
     const c = this._config;
     return {
-      title: c.title ?? "Energia",
       ...(c.entities || {}),
       invert_grid: !!c.invert_grid,
       invert_battery: !!c.invert_battery,
@@ -992,7 +972,8 @@ class EnergyHouseCardEditor extends HTMLElement {
   }
 
   _changed(v) {
-    const config = { ...this._config, title: v.title };
+    const config = { ...this._config };
+    delete config.title;
     const entities = { ...(this._config.entities || {}) };
     for (const k of EDITOR_ENTITY_KEYS) {
       if (v[k]) entities[k] = v[k];

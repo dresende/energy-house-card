@@ -24,7 +24,6 @@ Em **Editar dashboard → Adicionar card**, procura "Energy House Card". O card 
 
 ```yaml
 type: custom:energy-house-card
-title: Energia
 entities:
   solar_power: sensor.solar_power          # W ou kW
   home_power: sensor.home_power            # consumo total (inclui o carro)
@@ -48,7 +47,6 @@ Se a tua rede ou bateria usarem o sinal ao contrário, acrescenta `invert_grid: 
 
 | Opção | Por defeito | Para que serve |
 |---|---|---|
-| `title` | `Energia` | Título do card |
 | `full_screen` | `false` | O card ocupa a altura do ecrã (fica melhor numa vista do tipo **Painel**) |
 | `height` | — | Altura fixa, ex. `600px` ou `80vh`; a imagem cresce até caber |
 | `show` | conforme as entidades | Partes do desenho: `solar`, `battery`, `car`, `grid`, `vegetation` (ex. `show: { vegetation: false }`) |
