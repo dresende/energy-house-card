@@ -2,6 +2,10 @@
 
 Card para o Home Assistant com uma casa isométrica e os fluxos de energia animados entre painéis solares, bateria, casa, carro e rede.
 
+![Energy House Card](docs/screenshot.png)
+
+**[Experimenta o demo →](https://dresende.github.io/energy-house-card/)** (dados simulados, sem precisar de Home Assistant)
+
 ## Instalar
 
 ### Com HACS
