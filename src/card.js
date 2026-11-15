@@ -1,5 +1,5 @@
-/*! energy-house-card v2.3.1 */
-const VERSION = "2.3.1";
+/*! energy-house-card v2.4.0 */
+const VERSION = "2.4.0";
 const HOUSE_SVG = "__HOUSE_SVG__";
 const VB = { x: 170, y: 40, w: 960, h: 590 };
 const HUB = [43.2, 51.7];
@@ -403,6 +403,7 @@ class EnergyHouseCard extends HTMLElement {
     const c = this._config;
     const height = c.full_screen ? "calc(100vh - var(--header-height, 56px) - 16px)" : c.height;
     this.toggleAttribute("sized", !!height);
+    this.toggleAttribute("static", !!c.static_flows);
     this.style.setProperty("--ehc-height", height || "auto");
     this.style.setProperty("--ehc-ar", String(VB.w / VB.h));
     const [hx, hy] = toSvg(c.hub || HUB);
@@ -414,7 +415,7 @@ class EnergyHouseCard extends HTMLElement {
           <svg class="scene" viewBox="${VB.x} ${VB.y} ${VB.w} ${VB.h}" preserveAspectRatio="xMidYMid meet" id="svg" role="img" aria-label="${this._t.aria}">
             <g class="art">${HOUSE_SVG}</g>
             <g id="trails"></g>
-            <g id="dots" filter="url(#glow)"></g>
+            <g id="dots" ${c.static_flows ? "" : `filter="url(#glow)"`}></g>
             <g id="hub" class="hub">
               <circle cx="${hx}" cy="${hy}" r="12" class="hub-halo" filter="url(#glow)"/>
               <circle cx="${hx}" cy="${hy}" r="8.5" class="hub-core"/>
@@ -713,8 +714,9 @@ class EnergyHouseCard extends HTMLElement {
     this._els.foot.querySelectorAll("[data-entity]").forEach((b) => b.addEventListener("click", () => this._moreInfo(b.dataset.entity)));
   }
 
+  // `static_flows` (or the OS reduced-motion setting) draws the flows once, without the animation loop
   _reduced() {
-    return window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+    return !!this._config?.static_flows || window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
   }
 
   _loop() {
@@ -947,6 +949,9 @@ ha-card { overflow: hidden; padding: 14px 14px 12px; display: flex; flex-directi
 .editor button { font: inherit; font-size: .8rem; padding: 5px 12px; border-radius: 8px; border: 1px solid var(--ehc-accent); background: transparent; color: var(--ehc-accent); cursor: pointer; }
 .editor textarea { width: 100%; box-sizing: border-box; min-height: 180px; font: 12px/1.45 ui-monospace, SFMono-Regular, Menlo, monospace; padding: 8px; border-radius: 8px;
   border: 1px solid var(--ehc-badge-border); background: color-mix(in srgb, var(--ehc-text) 4%, transparent); color: var(--ehc-text); resize: vertical; }
+/* lighter rendering for less capable devices */
+:host([static]) .place { -webkit-backdrop-filter: none; backdrop-filter: none; background: var(--card-background-color, #fff); }
+:host([static]) .ring-fg, :host([static]) .trail, :host([static]) .art, :host([static]) .hub, :host([static]) .place { transition: none; }
 @media (prefers-reduced-motion: reduce) { .ring-fg, .trail, .art, .hub { transition: none; } }
 `;
 
@@ -973,7 +978,7 @@ const EDITOR_TEXT = {
       walls_color: "Walls", deck_color: "Deck", car_color: "Car",
       invert_grid: "Invert grid sign", invert_battery: "Invert battery sign", show_vegetation: "Show garden",
       full_screen: "Fill the screen", height: "Card height", flow_threshold: "Minimum to animate a flow",
-      edit_positions: "Positioning mode", language: "Language",
+      edit_positions: "Positioning mode", language: "Language", static_flows: "Static flows",
     },
     helpers: {
       home_power: "Total consumption, including the car. Leave empty to calculate it from solar, battery and grid.",
@@ -983,6 +988,7 @@ const EDITOR_TEXT = {
       height: "E.g. 600px or 80vh. Empty = automatic height.",
       edit_positions: "Drag the values and flows on the card, then copy the generated YAML.",
       names: "Leave empty to use the default name.",
+      static_flows: "For less capable devices (wall tablets, old phones): shows the flows without animation.",
     },
     languages: { auto: "Same as Home Assistant", en: "English", pt: "Português" },
   },
@@ -996,7 +1002,7 @@ const EDITOR_TEXT = {
       walls_color: "Paredes", deck_color: "Alpendre", car_color: "Carro",
       invert_grid: "Inverter sinal da rede", invert_battery: "Inverter sinal da bateria", show_vegetation: "Mostrar jardim",
       full_screen: "Ocupar o ecrã todo", height: "Altura do card", flow_threshold: "Mínimo para animar o fluxo",
-      edit_positions: "Modo de posicionamento", language: "Língua",
+      edit_positions: "Modo de posicionamento", language: "Língua", static_flows: "Fluxos estáticos",
     },
     helpers: {
       home_power: "Consumo total, incluindo o carro. Se ficar vazio, é calculado a partir de solar, bateria e rede.",
@@ -1006,6 +1012,7 @@ const EDITOR_TEXT = {
       height: "Ex.: 600px ou 80vh. Vazio = altura automática.",
       edit_positions: "Arrasta os valores e os fluxos no card e copia o YAML gerado.",
       names: "Se ficar vazio, usa o nome por defeito.",
+      static_flows: "Para dispositivos menos capazes (tablets de parede, telemóveis antigos): mostra os fluxos sem animação.",
     },
     languages: { auto: "Igual ao Home Assistant", en: "English", pt: "Português" },
   },
@@ -1062,6 +1069,7 @@ function editorSchema(et) {
         { name: "show_vegetation", selector: { boolean: {} } },
         { name: "full_screen", selector: { boolean: {} } },
         { name: "height", selector: { text: {} } },
+        { name: "static_flows", selector: { boolean: {} } },
         { name: "flow_threshold", selector: { number: { min: 0, max: 500, step: 5, mode: "box", unit_of_measurement: "W" } } },
         { name: "edit_positions", selector: { boolean: {} } },
       ],
@@ -1097,6 +1105,7 @@ class EnergyHouseCardEditor extends HTMLElement {
       height: c.height ?? "",
       flow_threshold: c.flow_threshold ?? 10,
       edit_positions: !!c.edit_positions,
+      static_flows: !!c.static_flows,
     };
   }
 
@@ -1126,7 +1135,7 @@ class EnergyHouseCardEditor extends HTMLElement {
       else delete entities[k];
     }
     config.entities = entities;
-    for (const k of ["invert_grid", "invert_battery", "full_screen", "edit_positions"]) {
+    for (const k of ["invert_grid", "invert_battery", "full_screen", "edit_positions", "static_flows"]) {
       if (v[k]) config[k] = true;
       else delete config[k];
     }

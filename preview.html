@@ -79,12 +79,13 @@
       <button type="button" id="b_night">Night</button>
       <button type="button" id="b_nocar" aria-pressed="false">No car</button>
       <button type="button" id="b_nobatt" aria-pressed="false">No battery</button>
+      <button type="button" id="b_static" aria-pressed="false">Static</button>
     </div>
   </div>
 </main>
 <script>
   const $ = (id) => document.getElementById(id);
-  let dark = false, pt = false, edit = false, noCar = false, noBatt = false, full = false;
+  let dark = false, pt = false, stat = false, edit = false, noCar = false, noBatt = false, full = false;
   const baseConfig = {
     type: "custom:energy-house-card",
     entities: {
@@ -108,6 +109,7 @@
     const cfg = structuredClone(baseConfig);
     cfg.edit_positions = edit;
     cfg.full_screen = full;
+    cfg.static_flows = stat;
     if (noCar) ["car_power", "car_soc", "car_plugged"].forEach((k) => delete cfg.entities[k]);
     if (noBatt) ["battery_power", "battery_soc"].forEach((k) => delete cfg.entities[k]);
     card.setConfig(cfg);
@@ -147,6 +149,7 @@
   $("b_narrow").onclick = (e) => { const on = $("wrap").classList.toggle("narrow"); e.target.setAttribute("aria-pressed", on); };
   $("b_nocar").onclick = (e) => { noCar = !noCar; e.target.setAttribute("aria-pressed", noCar); mount(); };
   $("b_nobatt").onclick = (e) => { noBatt = !noBatt; e.target.setAttribute("aria-pressed", noBatt); mount(); };
+  $("b_static").onclick = (e) => { stat = !stat; e.target.setAttribute("aria-pressed", stat); mount(); };
   $("b_night").onclick = () => { $("solar").value = 0; $("house").value = 650; $("batt").value = 2400; $("car").value = 3700; push(); };
   mount();
 </script>

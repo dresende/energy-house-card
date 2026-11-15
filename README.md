@@ -79,6 +79,7 @@ If your grid or battery uses the opposite sign, add `invert_grid: true` or `inve
 | `height` | — | Fixed height, e.g. `600px` or `80vh`; the house grows to fit |
 | `colors` | white walls | House colours: `walls`, `deck` and `car`, in hex, e.g. `colors: { walls: "#3b4148", car: "#1f3a6b" }`. Each face's shading is derived from the colour you pick |
 | `show` | from the entities | Parts of the drawing: `solar`, `battery`, `car`, `grid`, `vegetation` (e.g. `show: { vegetation: false }`) |
+| `static_flows` | `false` | For less capable devices (wall tablets, old phones): flows are drawn in their colours and direction, without animation, glow or blur. Also applies automatically when the device asks for reduced motion |
 | `flow_threshold` | `10` | Below this many watts a flow stays still |
 | `edit_positions` | `false` | Turns on positioning mode (see below) |
 | `places` | 5 places | List of values over the picture |
