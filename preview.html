@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="pt">
+<html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -62,28 +62,29 @@
 <main>
   <div id="wrap"></div>
   <div class="controls">
-    <h2>Simulação</h2>
+    <h2>Simulation</h2>
     <div class="row"><label>Solar <output id="o_solar"></output></label><input type="range" id="solar" min="0" max="8000" step="50" value="4200"></div>
-    <div class="row"><label>Consumo casa (sem carro) <output id="o_house"></output></label><input type="range" id="house" min="0" max="6000" step="50" value="850"></div>
-    <div class="row"><label>Bateria (+ descarrega / − carrega) <output id="o_batt"></output></label><input type="range" id="batt" min="-5000" max="5000" step="50" value="-1200"></div>
-    <div class="row"><label>Carro <output id="o_car"></output></label><input type="range" id="car" min="0" max="11000" step="100" value="2300"></div>
-    <div class="row"><label>SOC bateria <output id="o_bsoc"></output></label><input type="range" id="bsoc" min="0" max="100" value="64"></div>
-    <div class="row"><label>SOC carro <output id="o_csoc"></output></label><input type="range" id="csoc" min="0" max="100" value="41"></div>
-    <div class="row"><label>Rede (calculada) <output id="o_grid"></output></label></div>
+    <div class="row"><label>Home (without car) <output id="o_house"></output></label><input type="range" id="house" min="0" max="6000" step="50" value="850"></div>
+    <div class="row"><label>Battery (+ discharging / − charging) <output id="o_batt"></output></label><input type="range" id="batt" min="-5000" max="5000" step="50" value="-1200"></div>
+    <div class="row"><label>Car <output id="o_car"></output></label><input type="range" id="car" min="0" max="11000" step="100" value="2300"></div>
+    <div class="row"><label>Battery SOC <output id="o_bsoc"></output></label><input type="range" id="bsoc" min="0" max="100" value="64"></div>
+    <div class="row"><label>Car SOC <output id="o_csoc"></output></label><input type="range" id="csoc" min="0" max="100" value="41"></div>
+    <div class="row"><label>Grid (calculated) <output id="o_grid"></output></label></div>
     <div class="btns">
-      <button type="button" id="b_theme" aria-pressed="false">Tema escuro</button>
-      <button type="button" id="b_edit" aria-pressed="false">Posicionar</button>
+      <button type="button" id="b_theme" aria-pressed="false">Dark theme</button>
+      <button type="button" id="b_pt" aria-pressed="false">Português</button>
+      <button type="button" id="b_edit" aria-pressed="false">Position</button>
       <button type="button" id="b_narrow" aria-pressed="false">400 px</button>
-      <button type="button" id="b_full" aria-pressed="false">Ecrã inteiro</button>
-      <button type="button" id="b_night">Noite</button>
-      <button type="button" id="b_nocar" aria-pressed="false">Sem carro</button>
-      <button type="button" id="b_nobatt" aria-pressed="false">Sem bateria</button>
+      <button type="button" id="b_full" aria-pressed="false">Full screen</button>
+      <button type="button" id="b_night">Night</button>
+      <button type="button" id="b_nocar" aria-pressed="false">No car</button>
+      <button type="button" id="b_nobatt" aria-pressed="false">No battery</button>
     </div>
   </div>
 </main>
 <script>
   const $ = (id) => document.getElementById(id);
-  let dark = false, edit = false, noCar = false, noBatt = false, full = false;
+  let dark = false, pt = false, edit = false, noCar = false, noBatt = false, full = false;
   const baseConfig = {
     type: "custom:energy-house-card",
     entities: {
@@ -121,7 +122,7 @@
     const grid = home - solar - batt;
     $("o_solar").value = solar + " W"; $("o_house").value = house + " W"; $("o_batt").value = batt + " W";
     $("o_car").value = car + " W"; $("o_bsoc").value = $("bsoc").value + "%"; $("o_csoc").value = $("csoc").value + "%";
-    $("o_grid").value = (grid >= 0 ? "importa " : "exporta ") + Math.abs(grid) + " W";
+    $("o_grid").value = (grid >= 0 ? "importing " : "exporting ") + Math.abs(grid) + " W";
     const states = {
       "sensor.solar_power": st(solar, "W"),
       "sensor.home_power": st((home / 1000).toFixed(3), "kW"),
@@ -136,10 +137,11 @@
     states["sensor.car_charger_power"] = st(car, "W");
     states["sensor.car_battery_level"] = st($("csoc").value, "%");
     states["binary_sensor.car_plugged"] = st(car > 0 ? "on" : "off", "");
-    card.hass = { states, themes: { darkMode: dark } };
+    card.hass = { states, themes: { darkMode: dark }, language: pt ? "pt" : "en", locale: { language: pt ? "pt" : "en" } };
   }
   ["solar", "house", "batt", "car", "bsoc", "csoc"].forEach((id) => $(id).addEventListener("input", push));
   $("b_theme").onclick = (e) => { dark = !dark; document.body.classList.toggle("dark", dark); e.target.setAttribute("aria-pressed", dark); push(); };
+  $("b_pt").onclick = (e) => { pt = !pt; e.target.setAttribute("aria-pressed", pt); push(); };
   $("b_edit").onclick = (e) => { edit = !edit; e.target.setAttribute("aria-pressed", edit); mount(); };
   $("b_full").onclick = (e) => { full = !full; e.target.setAttribute("aria-pressed", full); document.body.classList.toggle("full", full); mount(); };
   $("b_narrow").onclick = (e) => { const on = $("wrap").classList.toggle("narrow"); e.target.setAttribute("aria-pressed", on); };

@@ -1,5 +1,5 @@
-/*! energy-house-card v2.2.0 */
-const VERSION = "2.2.0";
+/*! energy-house-card v2.3.0 */
+const VERSION = "2.3.0";
 const HOUSE_SVG = "__HOUSE_SVG__";
 const VB = { x: 170, y: 40, w: 960, h: 590 };
 const HUB = [43.2, 51.7];
@@ -20,12 +20,41 @@ const FLOW_PARTS = {
 };
 
 const ROLES = {
-  solar:   { name: "Solar",   icon: "mdi:solar-power-variant", color: "var(--ehc-solar)" },
-  home:    { name: "Casa",    icon: "mdi:home-lightning-bolt", color: "var(--ehc-home)" },
-  grid:    { name: "Rede",    icon: "mdi:transmission-tower",  color: "var(--ehc-grid)" },
-  battery: { name: "Bateria", icon: "mdi:home-battery",        color: "var(--ehc-battery)" },
-  car:     { name: "Carro",   icon: "mdi:car-electric",        color: "var(--ehc-car)" },
+  solar:   { icon: "mdi:solar-power-variant", color: "var(--ehc-solar)" },
+  home:    { icon: "mdi:home-lightning-bolt", color: "var(--ehc-home)" },
+  grid:    { icon: "mdi:transmission-tower",  color: "var(--ehc-grid)" },
+  battery: { icon: "mdi:home-battery",        color: "var(--ehc-battery)" },
+  car:     { icon: "mdi:car-electric",        color: "var(--ehc-car)" },
 };
+
+// card texts; English unless Home Assistant (or `language:`) says Portuguese
+const I18N = {
+  en: {
+    roles: { solar: "Solar", home: "Home", grid: "Grid", battery: "Battery", car: "Car" },
+    importing: "importing", exporting: "exporting", discharging: "discharging", charging: "charging",
+    no_production: "no production", plugged: "plugged in", unplugged: "unplugged",
+    today: "Today", produced: "Produced", consumed: "Consumed", imported: "Imported", exported: "Exported",
+    car_today: "Car", self_consumption: "Self-consumption",
+    aria: "House and energy flows",
+    edit_hint: "Positioning mode: drag the values and the flow points",
+    copy: "Copy YAML", copied: "Copied", select_copy: "Select and copy",
+  },
+  pt: {
+    roles: { solar: "Solar", home: "Casa", grid: "Rede", battery: "Bateria", car: "Carro" },
+    importing: "a importar", exporting: "a exportar", discharging: "a descarregar", charging: "a carregar",
+    no_production: "sem produção", plugged: "ligado", unplugged: "desligado",
+    today: "Hoje", produced: "Produzido", consumed: "Consumido", imported: "Importado", exported: "Exportado",
+    car_today: "Carro", self_consumption: "Autoconsumo",
+    aria: "Casa e fluxos de energia",
+    edit_hint: "Modo de posicionamento: arrasta os valores e os pontos dos fluxos",
+    copy: "Copiar YAML", copied: "Copiado", select_copy: "Seleciona e copia",
+  },
+};
+
+function pickLang(config, hass) {
+  const want = config?.language && config.language !== "auto" ? config.language : hass?.locale?.language || hass?.language || "en";
+  return String(want).toLowerCase().startsWith("pt") ? "pt" : "en";
+}
 
 const DEFAULT_PLACES = {
   solar:   { x: 49, y: 0,  align: "center", valign: "top" },
@@ -142,10 +171,11 @@ function routeEnergy(p) {
   const gridImp = Math.max(0, G);
   const gridExp = Math.max(0, -G);
 
-  const solarToLoad = Math.min(S, L);
-  let rem = S - solarToLoad;
-  const solarToBatt = Math.min(rem, battChg);
-  rem -= solarToBatt;
+  // a charging battery takes solar first (as hybrid inverters do), so the
+  // house→battery path only lights up when the sun can't cover the charge
+  const solarToBatt = Math.min(S, battChg);
+  const solarToLoad = Math.min(S - solarToBatt, L);
+  let rem = S - solarToBatt - solarToLoad;
   const solarToGrid = Math.min(rem, gridExp);
   const battToLoad = Math.min(battDis, Math.max(0, L - solarToLoad));
   const battToGrid = Math.max(0, gridExp - solarToGrid);
@@ -259,7 +289,7 @@ class EnergyHouseCard extends HTMLElement {
   }
 
   setConfig(config) {
-    if (!config || typeof config !== "object") throw new Error("Configuração inválida");
+    if (!config || typeof config !== "object") throw new Error("Invalid configuration");
     this._config = {
       flow_threshold: 10,
       invert_grid: false,
@@ -278,6 +308,7 @@ class EnergyHouseCard extends HTMLElement {
       vegetation: true,
       ...(config.show || {}),
     };
+    this._lang = pickLang(this._config, this._hass);
     this._places = this._buildPlaces();
     this._flows = {};
     for (const [k, pts] of Object.entries(DEFAULT_FLOWS)) {
@@ -313,9 +344,18 @@ class EnergyHouseCard extends HTMLElement {
     return list.map((p, i) => ({ ...p, id: i, x: Number(p.x ?? 50), y: Number(p.y ?? 50) }));
   }
 
+  get _t() {
+    return I18N[this._lang || "en"];
+  }
+
   set hass(hass) {
     this._hass = hass;
     if (!this._config) return;
+    const lang = pickLang(this._config, hass);
+    if (lang !== this._lang) {
+      this._lang = lang;
+      this._render();
+    }
     this._update();
   }
 
@@ -371,7 +411,7 @@ class EnergyHouseCard extends HTMLElement {
       <ha-card>
         <div class="stage-wrap">
         <div class="stage" id="stage">
-          <svg class="scene" viewBox="${VB.x} ${VB.y} ${VB.w} ${VB.h}" preserveAspectRatio="xMidYMid meet" id="svg" role="img" aria-label="Casa e fluxos de energia">
+          <svg class="scene" viewBox="${VB.x} ${VB.y} ${VB.w} ${VB.h}" preserveAspectRatio="xMidYMid meet" id="svg" role="img" aria-label="${this._t.aria}">
             <g class="art">${HOUSE_SVG}</g>
             <g id="trails"></g>
             <g id="dots" filter="url(#glow)"></g>
@@ -389,8 +429,8 @@ class EnergyHouseCard extends HTMLElement {
         ${c.edit_positions ? `
         <div class="editor">
           <div class="editor-head">
-            <span>Modo de posicionamento: arrasta os valores e os pontos dos fluxos</span>
-            <button type="button" id="copy">Copiar YAML</button>
+            <span>${this._t.edit_hint}</span>
+            <button type="button" id="copy">${this._t.copy}</button>
           </div>
           <textarea id="yaml" readonly spellcheck="false"></textarea>
         </div>` : ""}
@@ -526,7 +566,7 @@ class EnergyHouseCard extends HTMLElement {
       const meta = ROLES[p.role] || {};
       const color = p.color || meta.color || "var(--ehc-accent)";
       const icon = p.icon || meta.icon || "mdi:information-outline";
-      const name = p.name ?? meta.name ?? "";
+      const name = p.name ?? (p.role ? this._config.names?.[p.role] || this._t.roles[p.role] : "");
       const ring = p.role === "battery" || p.role === "car";
       return `
         <button type="button" class="place align-${esc(p.align || "center")} valign-${esc(p.valign || "center")} ${this._config.edit_positions ? "editable" : ""}"
@@ -578,9 +618,10 @@ class EnergyHouseCard extends HTMLElement {
         const w = powers[p.role];
         val = fmtPower(w);
         active = w != null && Math.abs(w) >= this._config.flow_threshold;
-        if (p.role === "grid" && w != null && active) sub = w > 0 ? "a importar" : "a exportar";
-        if (p.role === "battery" && w != null && active) sub = w > 0 ? "a descarregar" : "a carregar";
-        if (p.role === "solar" && w != null && !active) sub = "sem produção";
+        const t = this._t;
+        if (p.role === "grid" && w != null && active) sub = w > 0 ? t.importing : t.exporting;
+        if (p.role === "battery" && w != null && active) sub = w > 0 ? t.discharging : t.charging;
+        if (p.role === "solar" && w != null && !active) sub = t.no_production;
       } else {
         const s = this._state(p.entity);
         if (s && !["unavailable", "unknown"].includes(s.state)) {
@@ -607,7 +648,8 @@ class EnergyHouseCard extends HTMLElement {
         const plug = this._state(this._config.entities.car_plugged);
         if (plug) {
           const on = plug.state === "on";
-          sub = sub ? `${sub} · ${on ? "ligado" : "desligado"}` : on ? "ligado" : "desligado";
+          const txt = on ? this._t.plugged : this._t.unplugged;
+          sub = sub ? `${sub} · ${txt}` : txt;
         }
       }
       valEl.textContent = val;
@@ -645,27 +687,28 @@ class EnergyHouseCard extends HTMLElement {
 
   _renderFoot() {
     const e = this._config.entities;
+    const t = this._t;
     const items = [
-      ["Produzido", e.solar_energy_today, "var(--ehc-solar)"],
-      ["Consumido", e.home_energy_today, "var(--ehc-home)"],
-      ["Importado", e.grid_import_today, "var(--ehc-grid)"],
-      ["Exportado", e.grid_export_today, "var(--ehc-grid)"],
-      ["Carro", e.car_energy_today, "var(--ehc-car)"],
+      ["produced", e.solar_energy_today, "var(--ehc-solar)"],
+      ["consumed", e.home_energy_today, "var(--ehc-home)"],
+      ["imported", e.grid_import_today, "var(--ehc-grid)"],
+      ["exported", e.grid_export_today, "var(--ehc-grid)"],
+      ["car_today", e.car_energy_today, "var(--ehc-car)"],
     ].filter(([, id]) => id);
     if (!items.length) {
       this._els.foot.hidden = true;
       return;
     }
     const vals = items.map(([label, id, color]) => [label, toKwh(this._state(id)), color, id]);
-    const prod = vals.find((v) => v[0] === "Produzido")?.[1];
-    const exp = vals.find((v) => v[0] === "Exportado")?.[1];
+    const prod = vals.find((v) => v[0] === "produced")?.[1];
+    const exp = vals.find((v) => v[0] === "exported")?.[1];
     let extra = "";
     if (prod != null && exp != null && prod > 0) {
-      extra = `<div class="stat"><span class="k">Autoconsumo</span><span class="v">${Math.round(Math.max(0, 1 - exp / prod) * 100)}%</span></div>`;
+      extra = `<div class="stat"><span class="k">${t.self_consumption}</span><span class="v">${Math.round(Math.max(0, 1 - exp / prod) * 100)}%</span></div>`;
     }
     this._els.foot.hidden = false;
-    this._els.foot.innerHTML = `<div class="foot-label">Hoje</div><div class="stats">` + vals.map(([label, v, color, id]) =>
-      `<button type="button" class="stat" data-entity="${esc(id)}"><span class="k"><i style="background:${color}"></i>${label}</span><span class="v">${fmtEnergy(v)}</span></button>`
+    this._els.foot.innerHTML = `<div class="foot-label">${t.today}</div><div class="stats">` + vals.map(([label, v, color, id]) =>
+      `<button type="button" class="stat" data-entity="${esc(id)}"><span class="k"><i style="background:${color}"></i>${t[label]}</span><span class="v">${fmtEnergy(v)}</span></button>`
     ).join("") + extra + `</div>`;
     this._els.foot.querySelectorAll("[data-entity]").forEach((b) => b.addEventListener("click", () => this._moreInfo(b.dataset.entity)));
   }
@@ -803,12 +846,12 @@ class EnergyHouseCard extends HTMLElement {
     const btn = this.shadowRoot.getElementById("copy");
     try {
       await navigator.clipboard.writeText(this._els.yaml.value);
-      btn.textContent = "Copiado";
+      btn.textContent = this._t.copied;
     } catch {
       this._els.yaml.select();
-      btn.textContent = "Seleciona e copia";
+      btn.textContent = this._t.select_copy;
     }
-    setTimeout(() => (btn.textContent = "Copiar YAML"), 1600);
+    setTimeout(() => (btn.textContent = this._t.copy), 1600);
   }
 }
 
@@ -917,96 +960,122 @@ const EDITOR_ENTITY_KEYS = [
   "solar_energy_today", "home_energy_today", "grid_import_today", "grid_export_today", "car_energy_today",
 ];
 
-const EDITOR_SCHEMA = [
-  {
-    type: "expandable", flatten: true, expanded: true, title: "Potência agora", icon: "mdi:flash",
-    schema: [
-      { name: "solar_power", selector: POWER },
-      { name: "home_power", selector: POWER },
-      { name: "grid_power", selector: POWER },
-      { name: "battery_power", selector: POWER },
-      { name: "car_power", selector: POWER },
-    ],
-  },
-  {
-    type: "expandable", flatten: true, expanded: true, title: "Carga das baterias", icon: "mdi:battery-charging-60",
-    schema: [
-      { name: "battery_soc", selector: SOC },
-      { name: "car_soc", selector: SOC },
-      { name: "car_plugged", selector: { entity: { filter: [{ domain: "binary_sensor" }] } } },
-    ],
-  },
-  {
-    type: "expandable", flatten: true, title: "Totais de hoje (opcional)", icon: "mdi:calendar-today",
-    schema: [
-      { name: "solar_energy_today", selector: ENERGY },
-      { name: "home_energy_today", selector: ENERGY },
-      { name: "grid_import_today", selector: ENERGY },
-      { name: "grid_export_today", selector: ENERGY },
-      { name: "car_energy_today", selector: ENERGY },
-    ],
-  },
-  {
-    type: "expandable", flatten: true, title: "Cores da casa", icon: "mdi:palette",
-    schema: [
-      { name: "walls_color", selector: { color_rgb: {} } },
-      { name: "deck_color", selector: { color_rgb: {} } },
-      { name: "car_color", selector: { color_rgb: {} } },
-    ],
-  },
-  {
-    type: "expandable", flatten: true, title: "Opções", icon: "mdi:cog",
-    schema: [
-      { name: "invert_grid", selector: { boolean: {} } },
-      { name: "invert_battery", selector: { boolean: {} } },
-      { name: "show_vegetation", selector: { boolean: {} } },
-      { name: "full_screen", selector: { boolean: {} } },
-      { name: "height", selector: { text: {} } },
-      { name: "flow_threshold", selector: { number: { min: 0, max: 500, step: 5, mode: "box", unit_of_measurement: "W" } } },
-      { name: "edit_positions", selector: { boolean: {} } },
-    ],
-  },
-];
+const NAME_ROLES = ["solar", "home", "grid", "battery", "car"];
 
-const EDITOR_LABELS = {
-  solar_power: "Produção solar",
-  home_power: "Consumo da casa",
-  grid_power: "Rede elétrica",
-  battery_power: "Bateria da casa",
-  car_power: "Carregamento do carro",
-  battery_soc: "Carga da bateria da casa (SOC)",
-  car_soc: "Carga do carro (SOC)",
-  car_plugged: "Carro ligado à tomada",
-  solar_energy_today: "Produzido hoje",
-  home_energy_today: "Consumido hoje",
-  grid_import_today: "Importado hoje",
-  grid_export_today: "Exportado hoje",
-  car_energy_today: "Carro hoje",
-  walls_color: "Paredes",
-  deck_color: "Alpendre",
-  car_color: "Carro",
-  invert_grid: "Inverter sinal da rede",
-  invert_battery: "Inverter sinal da bateria",
-  show_vegetation: "Mostrar jardim",
-  full_screen: "Ocupar o ecrã todo",
-  height: "Altura do card",
-  flow_threshold: "Mínimo para animar o fluxo",
-  edit_positions: "Modo de posicionamento",
+const EDITOR_TEXT = {
+  en: {
+    groups: { power: "Power now", soc: "Battery charge", today: "Today's totals (optional)", names: "Names", colors: "House colours", options: "Options" },
+    labels: {
+      solar_power: "Solar production", home_power: "Home consumption", grid_power: "Grid", battery_power: "Home battery",
+      car_power: "Car charging", battery_soc: "Home battery charge (SOC)", car_soc: "Car charge (SOC)", car_plugged: "Car plugged in",
+      solar_energy_today: "Produced today", home_energy_today: "Consumed today", grid_import_today: "Imported today",
+      grid_export_today: "Exported today", car_energy_today: "Car today",
+      walls_color: "Walls", deck_color: "Deck", car_color: "Car",
+      invert_grid: "Invert grid sign", invert_battery: "Invert battery sign", show_vegetation: "Show garden",
+      full_screen: "Fill the screen", height: "Card height", flow_threshold: "Minimum to animate a flow",
+      edit_positions: "Positioning mode", language: "Language",
+    },
+    helpers: {
+      home_power: "Total consumption, including the car. Leave empty to calculate it from solar, battery and grid.",
+      grid_power: "Positive when importing, negative when exporting. If yours is the other way round, turn on \"Invert grid sign\".",
+      battery_power: "Positive when discharging, negative when charging. If yours is the other way round, turn on \"Invert battery sign\".",
+      car_power: "Without this entity, the car and the carport are hidden.",
+      height: "E.g. 600px or 80vh. Empty = automatic height.",
+      edit_positions: "Drag the values and flows on the card, then copy the generated YAML.",
+      names: "Leave empty to use the default name.",
+    },
+    languages: { auto: "Same as Home Assistant", en: "English", pt: "Português" },
+  },
+  pt: {
+    groups: { power: "Potência agora", soc: "Carga das baterias", today: "Totais de hoje (opcional)", names: "Nomes", colors: "Cores da casa", options: "Opções" },
+    labels: {
+      solar_power: "Produção solar", home_power: "Consumo da casa", grid_power: "Rede elétrica", battery_power: "Bateria da casa",
+      car_power: "Carregamento do carro", battery_soc: "Carga da bateria da casa (SOC)", car_soc: "Carga do carro (SOC)", car_plugged: "Carro ligado à tomada",
+      solar_energy_today: "Produzido hoje", home_energy_today: "Consumido hoje", grid_import_today: "Importado hoje",
+      grid_export_today: "Exportado hoje", car_energy_today: "Carro hoje",
+      walls_color: "Paredes", deck_color: "Alpendre", car_color: "Carro",
+      invert_grid: "Inverter sinal da rede", invert_battery: "Inverter sinal da bateria", show_vegetation: "Mostrar jardim",
+      full_screen: "Ocupar o ecrã todo", height: "Altura do card", flow_threshold: "Mínimo para animar o fluxo",
+      edit_positions: "Modo de posicionamento", language: "Língua",
+    },
+    helpers: {
+      home_power: "Consumo total, incluindo o carro. Se ficar vazio, é calculado a partir de solar, bateria e rede.",
+      grid_power: "Positivo a importar, negativo a exportar. Se o teu for ao contrário, liga \"Inverter sinal da rede\".",
+      battery_power: "Positivo a descarregar, negativo a carregar. Se o teu for ao contrário, liga \"Inverter sinal da bateria\".",
+      car_power: "Sem esta entidade, o carro e o telheiro não aparecem.",
+      height: "Ex.: 600px ou 80vh. Vazio = altura automática.",
+      edit_positions: "Arrasta os valores e os fluxos no card e copia o YAML gerado.",
+      names: "Se ficar vazio, usa o nome por defeito.",
+    },
+    languages: { auto: "Igual ao Home Assistant", en: "English", pt: "Português" },
+  },
 };
 
-const EDITOR_HELPERS = {
-  home_power: "Consumo total, incluindo o carro. Se ficar vazio, é calculado a partir de solar, bateria e rede.",
-  grid_power: "Positivo a importar, negativo a exportar. Se o teu for ao contrário, liga \"Inverter sinal da rede\".",
-  battery_power: "Positivo a descarregar, negativo a carregar. Se o teu for ao contrário, liga \"Inverter sinal da bateria\".",
-  car_power: "Sem esta entidade, o carro e o telheiro não aparecem.",
-  height: "Ex.: 600px ou 80vh. Vazio = altura automática.",
-  edit_positions: "Arrasta os valores e os fluxos no card e copia o YAML gerado.",
-};
+function editorSchema(et) {
+  return [
+    {
+      type: "expandable", flatten: true, expanded: true, title: et.groups.power, icon: "mdi:flash",
+      schema: [
+        { name: "solar_power", selector: POWER },
+        { name: "home_power", selector: POWER },
+        { name: "grid_power", selector: POWER },
+        { name: "battery_power", selector: POWER },
+        { name: "car_power", selector: POWER },
+      ],
+    },
+    {
+      type: "expandable", flatten: true, expanded: true, title: et.groups.soc, icon: "mdi:battery-charging-60",
+      schema: [
+        { name: "battery_soc", selector: SOC },
+        { name: "car_soc", selector: SOC },
+        { name: "car_plugged", selector: { entity: { filter: [{ domain: "binary_sensor" }] } } },
+      ],
+    },
+    {
+      type: "expandable", flatten: true, title: et.groups.today, icon: "mdi:calendar-today",
+      schema: [
+        { name: "solar_energy_today", selector: ENERGY },
+        { name: "home_energy_today", selector: ENERGY },
+        { name: "grid_import_today", selector: ENERGY },
+        { name: "grid_export_today", selector: ENERGY },
+        { name: "car_energy_today", selector: ENERGY },
+      ],
+    },
+    {
+      type: "expandable", flatten: true, title: et.groups.names, icon: "mdi:form-textbox",
+      schema: NAME_ROLES.map((r) => ({ name: `${r}_name`, selector: { text: {} } })),
+    },
+    {
+      type: "expandable", flatten: true, title: et.groups.colors, icon: "mdi:palette",
+      schema: [
+        { name: "walls_color", selector: { color_rgb: {} } },
+        { name: "deck_color", selector: { color_rgb: {} } },
+        { name: "car_color", selector: { color_rgb: {} } },
+      ],
+    },
+    {
+      type: "expandable", flatten: true, title: et.groups.options, icon: "mdi:cog",
+      schema: [
+        { name: "language", selector: { select: { mode: "dropdown", options: ["auto", "en", "pt"].map((v) => ({ value: v, label: et.languages[v] })) } } },
+        { name: "invert_grid", selector: { boolean: {} } },
+        { name: "invert_battery", selector: { boolean: {} } },
+        { name: "show_vegetation", selector: { boolean: {} } },
+        { name: "full_screen", selector: { boolean: {} } },
+        { name: "height", selector: { text: {} } },
+        { name: "flow_threshold", selector: { number: { min: 0, max: 500, step: 5, mode: "box", unit_of_measurement: "W" } } },
+        { name: "edit_positions", selector: { boolean: {} } },
+      ],
+    },
+  ];
+}
 
 class EnergyHouseCardEditor extends HTMLElement {
   set hass(hass) {
+    const before = this._hass;
     this._hass = hass;
-    if (this._form) this._form.hass = hass;
+    if (!this._form) return;
+    this._form.hass = hass;
+    if (!before || pickLang(this._config, before) !== pickLang(this._config, hass)) this._render();
   }
 
   setConfig(config) {
@@ -1018,6 +1087,8 @@ class EnergyHouseCardEditor extends HTMLElement {
     const c = this._config;
     return {
       ...(c.entities || {}),
+      ...Object.fromEntries(NAME_ROLES.map((r) => [`${r}_name`, c.names?.[r] ?? ""])),
+      language: c.language || "auto",
       ...Object.fromEntries(Object.keys(PALETTE).map((p) => [`${p}_color`, toRgb(c.colors?.[p] ?? defaultColor(p))])),
       invert_grid: !!c.invert_grid,
       invert_battery: !!c.invert_battery,
@@ -1032,13 +1103,19 @@ class EnergyHouseCardEditor extends HTMLElement {
   _render() {
     if (!this._form) {
       this._form = document.createElement("ha-form");
-      this._form.computeLabel = (s) => EDITOR_LABELS[s.name] ?? s.name;
-      this._form.computeHelper = (s) => EDITOR_HELPERS[s.name];
+      this._form.computeLabel = (s) => {
+        const role = s.name.endsWith("_name") && s.name.slice(0, -5);
+        if (role && I18N.en.roles[role]) return I18N[this._lang].roles[role];
+        return this._et.labels[s.name] ?? s.name;
+      };
+      this._form.computeHelper = (s) => (s.name.endsWith("_name") ? this._et.helpers.names : this._et.helpers[s.name]);
       this._form.addEventListener("value-changed", (e) => this._changed(e.detail.value));
       this.appendChild(this._form);
     }
+    this._lang = pickLang(this._config, this._hass);
+    this._et = EDITOR_TEXT[this._lang];
     this._form.hass = this._hass;
-    this._form.schema = EDITOR_SCHEMA;
+    this._form.schema = editorSchema(this._et);
     this._form.data = this._data();
   }
 
@@ -1059,6 +1136,17 @@ class EnergyHouseCardEditor extends HTMLElement {
     else delete config.height;
     if (v.flow_threshold != null && v.flow_threshold !== 10) config.flow_threshold = v.flow_threshold;
     else delete config.flow_threshold;
+    const names = { ...(this._config.names || {}) };
+    for (const r of NAME_ROLES) {
+      const n = (v[`${r}_name`] || "").trim();
+      if (n) names[r] = n;
+      else delete names[r];
+    }
+    if (Object.keys(names).length) config.names = names;
+    else delete config.names;
+    if (v.language && v.language !== "auto") config.language = v.language;
+    else delete config.language;
+
     const colors = { ...(this._config.colors || {}) };
     for (const p of Object.keys(PALETTE)) {
       const rgb = toRgb(v[`${p}_color`]);
@@ -1075,7 +1163,9 @@ class EnergyHouseCardEditor extends HTMLElement {
     if (Object.keys(show).length) config.show = show;
     else delete config.show;
 
+    const langChanged = pickLang(this._config, this._hass) !== pickLang(config, this._hass);
     this._config = config;
+    if (langChanged) this._render();
     this.dispatchEvent(new CustomEvent("config-changed", { detail: { config }, bubbles: true, composed: true }));
   }
 }
@@ -1090,7 +1180,7 @@ if (!customElements.get("energy-house-card")) {
   window.customCards.push({
     type: "energy-house-card",
     name: "Energy House Card",
-    description: "Casa isométrica com fluxos de energia: solar, bateria, rede e carro.",
+    description: "Isometric house with animated energy flows: solar, battery, grid and EV.",
     preview: true,
     documentationURL: "https://github.com/dresende/energy-house-card",
   });
