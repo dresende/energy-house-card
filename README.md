@@ -65,7 +65,13 @@ entities:
   grid_import_today: sensor.grid_import_today
   grid_export_today: sensor.grid_export_today
   car_energy_today: sensor.car_energy_today
+  # weather around the house (optional)
+  weather: weather.home
 ```
+
+With a `weather` entity, the card draws the sky around the house: the sun on sunny days, clouds otherwise, rain, snow, and the moon at night (from `sun.sun` or the `clear-night` state). Rain and snow win over day and night. The moon shows its current phase, calculated by the card from the date, so it needs no extra sensor. In the southern hemisphere (from Home Assistant's latitude) it is mirrored. The colours follow the light and dark themes.
+
+Most installs already have a weather entity: Home Assistant adds the Met.no forecast (`weather.forecast_home`) during onboarding. Night comes from `sun.sun`, which is on by default.
 
 If your grid or battery uses the opposite sign, add `invert_grid: true` or `invert_battery: true`. Without `home_power`, consumption is calculated from solar + battery + grid.
 

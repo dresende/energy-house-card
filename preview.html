@@ -69,6 +69,7 @@
     <div class="row"><label>Car <output id="o_car"></output></label><input type="range" id="car" min="0" max="11000" step="100" value="2300"></div>
     <div class="row"><label>Battery SOC <output id="o_bsoc"></output></label><input type="range" id="bsoc" min="0" max="100" value="64"></div>
     <div class="row"><label>Car SOC <output id="o_csoc"></output></label><input type="range" id="csoc" min="0" max="100" value="41"></div>
+    <div class="row"><label>Weather <select id="weather"><option value="">none</option><option>sunny</option><option>partlycloudy</option><option>rainy</option><option>snowy</option><option value="night">night</option></select></label></div>
     <div class="row"><label>Grid (calculated) <output id="o_grid"></output></label></div>
     <div class="btns">
       <button type="button" id="b_theme" aria-pressed="false">Dark theme</button>
@@ -97,6 +98,7 @@
       car_power: "sensor.car_charger_power",
       car_soc: "sensor.car_battery_level",
       car_plugged: "binary_sensor.car_plugged",
+      weather: "weather.home",
       solar_energy_today: "sensor.solar_energy_today",
       home_energy_today: "sensor.home_energy_today",
       grid_import_today: "sensor.grid_import_today",
@@ -136,12 +138,15 @@
       "sensor.grid_import_today": st("2.1", "kWh"),
       "sensor.grid_export_today": st("6900", "Wh"),
     };
+    const wv = $("weather").value;
+    states["weather.home"] = st(wv === "night" ? "clear-night" : wv || "unknown", "");
+    states["sun.sun"] = st(wv === "night" ? "below_horizon" : "above_horizon", "");
     states["sensor.car_charger_power"] = st(car, "W");
     states["sensor.car_battery_level"] = st($("csoc").value, "%");
     states["binary_sensor.car_plugged"] = st(car > 0 ? "on" : "off", "");
     card.hass = { states, themes: { darkMode: dark }, language: pt ? "pt" : "en", locale: { language: pt ? "pt" : "en" } };
   }
-  ["solar", "house", "batt", "car", "bsoc", "csoc"].forEach((id) => $(id).addEventListener("input", push));
+  ["solar", "house", "batt", "car", "bsoc", "csoc", "weather"].forEach((id) => $(id).addEventListener("input", push));
   $("b_theme").onclick = (e) => { dark = !dark; document.body.classList.toggle("dark", dark); e.target.setAttribute("aria-pressed", dark); push(); };
   $("b_pt").onclick = (e) => { pt = !pt; e.target.setAttribute("aria-pressed", pt); push(); };
   $("b_edit").onclick = (e) => { edit = !edit; e.target.setAttribute("aria-pressed", edit); mount(); };

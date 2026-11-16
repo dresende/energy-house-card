@@ -1,5 +1,5 @@
-/*! energy-house-card v2.5.0 */
-const VERSION = "2.5.0";
+/*! energy-house-card v2.6.0 */
+const VERSION = "2.6.0";
 const HOUSE_SVG = "__HOUSE_SVG__";
 const VB = { x: 170, y: 40, w: 960, h: 590 };
 const HUB = [43.2, 51.7];
@@ -253,8 +253,94 @@ function guessEntities(hass) {
     car_soc: guessEntity(hass, used, { ...soc, want: [WORDS.car], avoid: [WORDS.gadget] }),
     battery_soc: guessEntity(hass, used, { ...soc, want: [WORDS.battery], avoid: [WORDS.car, WORDS.gadget] }),
     car_plugged: guessEntity(hass, used, { domain: "binary_sensor", deviceClass: "plug", want: [WORDS.car] }),
+    weather: Object.keys(hass?.states || {}).sort((a, b) => (b === "weather.home") - (a === "weather.home")).find((id) => id.startsWith("weather.")),
   };
   return Object.fromEntries(Object.entries(found).filter(([, v]) => v));
+}
+
+// ---- weather -------------------------------------------------------------
+// one scene per weather state, drawn around the house in theme-aware colours
+function weatherScene(state, night) {
+  if (!state || state === "unavailable" || state === "unknown") return null;
+  if (["rainy", "pouring", "lightning", "lightning-rainy", "hail"].includes(state)) return "rain";
+  if (["snowy", "snowy-rainy"].includes(state)) return "snow";
+  if (night || state === "clear-night") return "moon";
+  if (state === "sunny") return "sun";
+  return "clouds";
+}
+
+const SKY = { x: 292, y: 104 }; // top-left corner of the picture, clear of the badges
+const CLOUD_D = "M-52,22 C-72,22 -74,-4 -54,-8 C-56,-30 -28,-38 -14,-24 C-6,-46 30,-46 37,-20 C60,-24 70,4 53,22 Z";
+
+function seeded(n, seed) {
+  let x = seed;
+  return Array.from({ length: n }, () => {
+    x = (x * 16807) % 2147483647;
+    return (x - 1) / 2147483646;
+  });
+}
+
+// moon age as a fraction of the synodic month: 0 new, .25 first quarter, .5 full, .75 last quarter
+function moonPhase(date = new Date()) {
+  const knownNew = Date.UTC(2000, 0, 6, 18, 14) / 86400000;
+  const days = date.getTime() / 86400000 - knownNew;
+  return (((days / 29.530588853) % 1) + 1) % 1;
+}
+
+// lit part of the disc; seen from the northern hemisphere the waxing moon is lit on the right
+function moonLitPath(phase, r, south) {
+  const q = phase <= 0.5 ? phase : 1 - phase;
+  const k = Math.cos(2 * Math.PI * q);
+  const rx = (Math.abs(k) * r).toFixed(2);
+  const d = `M0,${-r} A${r},${r} 0 0 1 0,${r} A${rx},${r} 0 0 ${k > 0 ? 0 : 1} 0,${-r} Z`;
+  const flip = (phase > 0.5) !== !!south;
+  return flip ? `<path class="moon" transform="scale(-1,1)" d="${d}"/>` : `<path class="moon" d="${d}"/>`;
+}
+
+function cloudSvg(x, y, scale, cls, drift) {
+  return `<g transform="translate(${x},${y}) scale(${scale})"><g class="${drift ? "drift" : ""}" style="${drift ? `animation-duration:${drift}s` : ""}"><path d="${CLOUD_D}" class="${cls}"/></g></g>`;
+}
+
+function skySvg(scene, moon = {}) {
+  const { x, y } = SKY;
+  if (scene === "sun") {
+    const rays = Array.from({ length: 10 }, (_, i) => {
+      const a = (i * Math.PI) / 5;
+      const c = Math.cos(a), sn = Math.sin(a);
+      return `<line x1="${(c * 31).toFixed(1)}" y1="${(sn * 31).toFixed(1)}" x2="${(c * 42).toFixed(1)}" y2="${(sn * 42).toFixed(1)}"/>`;
+    }).join("");
+    return `<g transform="translate(${x},${y})"><g class="sun-rays spin">${rays}</g><circle r="23" class="sun-core"/></g>`;
+  }
+  if (scene === "moon") {
+    const star = (sx, sy, r) => `<path class="star twinkle" style="animation-delay:${(sx % 7) / 3}s" d="M${sx},${sy - r} Q${sx},${sy} ${sx + r},${sy} Q${sx},${sy} ${sx},${sy + r} Q${sx},${sy} ${sx - r},${sy} Q${sx},${sy} ${sx},${sy - r} Z"/>`;
+    return `<g transform="translate(${x},${y})"><circle class="moon-dark" r="24"/>${moonLitPath(moon.phase ?? 0.2, 24, moon.south)}${star(46, -18, 6)}${star(70, 14, 4)}${star(-48, 26, 4.5)}${star(28, 34, 3)}</g>`;
+  }
+  if (scene === "clouds") {
+    return cloudSvg(x + 6, y + 2, 0.95, "cloud", 22) + cloudSvg(x + 96, y + 28, 0.62, "cloud", 30);
+  }
+  // rain and snow: a heavier cloud over the precipitation
+  return cloudSvg(x + 6, y + 2, 0.95, "cloud heavy", 26) + cloudSvg(x + 92, y + 24, 0.7, "cloud heavy", 34);
+}
+
+function precipSvg(scene) {
+  if (scene !== "rain" && scene !== "snow") return "";
+  const n = scene === "rain" ? 70 : 55;
+  const r = seeded(n * 4, scene === "rain" ? 7 : 11);
+  const items = [];
+  for (let i = 0; i < n; i++) {
+    const px = VB.x + r[i * 4] * VB.w;
+    const py = VB.y + r[i * 4 + 1] * VB.h;
+    const delay = -(r[i * 4 + 2] * 10).toFixed(2);
+    if (scene === "rain") {
+      const dur = (0.7 + r[i * 4 + 3] * 0.5).toFixed(2);
+      items.push(`<line class="drop" x1="${px.toFixed(1)}" y1="${py.toFixed(1)}" x2="${(px - 4).toFixed(1)}" y2="${(py + 15).toFixed(1)}" style="animation-duration:${dur}s;animation-delay:${delay}s"/>`);
+    } else {
+      const dur = (7 + r[i * 4 + 3] * 6).toFixed(2);
+      const size = (2 + r[i * 4 + 3] * 2).toFixed(1);
+      items.push(`<circle class="flake" cx="${px.toFixed(1)}" cy="${py.toFixed(1)}" r="${size}" style="animation-duration:${dur}s;animation-delay:${delay}s"/>`);
+    }
+  }
+  return `<g class="${scene}">${items.join("")}</g>`;
 }
 
 async function ensureHaForm() {
@@ -418,7 +504,10 @@ class EnergyHouseCard extends HTMLElement {
         <div class="stage-wrap">
         <div class="stage" id="stage">
           <svg class="scene" viewBox="${VB.x} ${VB.y} ${VB.w} ${VB.h}" preserveAspectRatio="xMidYMid meet" id="svg" role="img" aria-label="${this._t.aria}">
+            <clipPath id="ehc-clip"><rect x="${VB.x}" y="${VB.y}" width="${VB.w}" height="${VB.h}"/></clipPath>
+            <g id="sky" class="weather"></g>
             <g class="art">${HOUSE_SVG}</g>
+            <g id="precip" class="weather" clip-path="url(#ehc-clip)"></g>
             <g id="trails"></g>
             <g id="dots" ${c.static_flows ? "" : `filter="url(#glow)"`}></g>
             <g id="hub" class="hub">
@@ -453,7 +542,10 @@ class EnergyHouseCard extends HTMLElement {
       foot: root.getElementById("foot"),
       yaml: root.getElementById("yaml"),
       hub: root.getElementById("hub"),
+      sky: root.getElementById("sky"),
+      precip: root.getElementById("precip"),
     };
+    this._scene = undefined;
     this._applyParts();
     this._applyColors();
     this._buildFlows();
@@ -694,8 +786,21 @@ class EnergyHouseCard extends HTMLElement {
     this._els.hub.classList.toggle("on", Object.values(this._flowState).some((s) => s.w >= th));
 
     this._renderFoot();
+    this._updateWeather();
     if (this._reduced()) this._drawFrame(0);
     this._loop();
+  }
+
+  _updateWeather() {
+    const w = this._state(this._config.entities.weather);
+    const night = this._hass?.states?.["sun.sun"]?.state === "below_horizon";
+    const scene = weatherScene(w?.state, night);
+    const moon = { phase: moonPhase(), south: (this._hass?.config?.latitude ?? 1) < 0 };
+    const key = scene === "moon" ? `moon:${moon.phase.toFixed(2)}:${moon.south}` : scene;
+    if (key === this._scene) return;
+    this._scene = key;
+    this._els.sky.innerHTML = scene ? skySvg(scene, moon) : "";
+    this._els.precip.innerHTML = scene ? precipSvg(scene) : "";
   }
 
   _renderFoot() {
@@ -962,6 +1067,40 @@ ha-card { overflow: hidden; padding: 14px 14px 12px; display: flex; flex-directi
 .editor button { font: inherit; font-size: .8rem; padding: 5px 12px; border-radius: 8px; border: 1px solid var(--ehc-accent); background: transparent; color: var(--ehc-accent); cursor: pointer; }
 .editor textarea { width: 100%; box-sizing: border-box; min-height: 180px; font: 12px/1.45 ui-monospace, SFMono-Regular, Menlo, monospace; padding: 8px; border-radius: 8px;
   border: 1px solid var(--ehc-badge-border); background: color-mix(in srgb, var(--ehc-text) 4%, transparent); color: var(--ehc-text); resize: vertical; }
+/* weather */
+:host {
+  --ehc-sun: #f5a524; --ehc-moon: #e9c75f; --ehc-star: #e2b84a;
+  --ehc-cloud: #e9eef3; --ehc-cloud-edge: #b9c4d0;
+  --ehc-cloud-heavy: #c3ccd7; --ehc-cloud-heavy-edge: #8e9bab;
+  --ehc-rain: #4f86c6; --ehc-snow: #ffffff; --ehc-snow-edge: #93a8bf;
+}
+:host([dark]) {
+  --ehc-sun: #ffbe3d; --ehc-moon: #f3dd8c; --ehc-star: #f8e7a8;
+  --ehc-cloud: #556072; --ehc-cloud-edge: #74809200;
+  --ehc-cloud-heavy: #434c5a; --ehc-cloud-heavy-edge: #5d687800;
+  --ehc-rain: #82b6f2; --ehc-snow: #eef4fa; --ehc-snow-edge: transparent;
+}
+.spin, .drift, .twinkle, .drop, .flake { transform-box: fill-box; transform-origin: center; }
+.sun-core { fill: var(--ehc-sun); }
+.sun-rays { stroke: var(--ehc-sun); stroke-width: 5; stroke-linecap: round; }
+.moon { fill: var(--ehc-moon); }
+.moon-dark { fill: var(--ehc-moon); opacity: .18; }
+.star { fill: var(--ehc-star); }
+.cloud { fill: var(--ehc-cloud); stroke: var(--ehc-cloud-edge); stroke-width: 2; }
+.cloud.heavy { fill: var(--ehc-cloud-heavy); stroke: var(--ehc-cloud-heavy-edge); }
+.drop { stroke: var(--ehc-rain); stroke-width: 2; stroke-linecap: round; opacity: .55; animation: ehc-rain linear infinite; }
+.flake { fill: var(--ehc-snow); stroke: var(--ehc-snow-edge); stroke-width: 1; opacity: .9; animation: ehc-snow linear infinite; }
+.spin { animation: ehc-spin 60s linear infinite; }
+.drift { animation: ehc-drift ease-in-out infinite alternate; }
+.twinkle { animation: ehc-twinkle 3.5s ease-in-out infinite; }
+@keyframes ehc-spin { to { transform: rotate(360deg); } }
+@keyframes ehc-drift { from { transform: translateX(-10px); } to { transform: translateX(14px); } }
+@keyframes ehc-twinkle { 50% { opacity: .35; } }
+@keyframes ehc-rain { from { transform: translate(14px, -300px); } to { transform: translate(-14px, 300px); } }
+@keyframes ehc-snow { 0% { transform: translate(0, -300px); } 50% { transform: translate(14px, 0); } 100% { transform: translate(-6px, 300px); } }
+:host([static]) .weather *, :host([static]) .weather { animation: none !important; }
+@media (prefers-reduced-motion: reduce) { .weather * { animation: none !important; } }
+
 /* lighter rendering for less capable devices */
 :host([static]) .place { -webkit-backdrop-filter: none; backdrop-filter: none; background: var(--card-background-color, #fff); }
 :host([static]) .ring-fg, :host([static]) .trail, :host([static]) .art, :host([static]) .hub, :host([static]) .place { transition: none; }
@@ -973,6 +1112,7 @@ const SOC = { entity: { filter: [{ domain: "sensor", device_class: "battery" }] 
 const ENERGY = { entity: { filter: [{ domain: "sensor", device_class: "energy" }] } };
 
 const EDITOR_ENTITY_KEYS = [
+  "weather",
   "solar_power", "home_power", "grid_power", "battery_power", "battery_soc",
   "car_power", "car_soc", "car_plugged",
   "solar_energy_today", "home_energy_today", "grid_import_today", "grid_export_today", "car_energy_today",
@@ -982,13 +1122,13 @@ const NAME_ROLES = ["solar", "home", "grid", "battery", "car"];
 
 const EDITOR_TEXT = {
   en: {
-    groups: { power: "Power now", soc: "Battery charge", today: "Today's totals (optional)", names: "Names", colors: "House colours", options: "Options" },
+    groups: { power: "Power now", soc: "Battery charge", today: "Today's totals (optional)", weather: "Weather", names: "Names", colors: "House colours", options: "Options" },
     labels: {
       solar_power: "Solar production", home_power: "Home consumption", grid_power: "Grid", battery_power: "Home battery",
       car_power: "Car charging", battery_soc: "Home battery charge (SOC)", car_soc: "Car charge (SOC)", car_plugged: "Car plugged in",
       solar_energy_today: "Produced today", home_energy_today: "Consumed today", grid_import_today: "Imported today",
       grid_export_today: "Exported today", car_energy_today: "Car today",
-      walls_color: "Walls", deck_color: "Deck", car_color: "Car",
+      weather: "Weather", walls_color: "Walls", deck_color: "Deck", car_color: "Car",
       invert_grid: "Invert grid sign", invert_battery: "Invert battery sign", home_includes_car: "Home consumption includes the car", show_vegetation: "Show garden",
       full_screen: "Fill the screen", height: "Card height", flow_threshold: "Minimum to animate a flow",
       edit_positions: "Positioning mode", language: "Language", static_flows: "Static flows",
@@ -1001,19 +1141,20 @@ const EDITOR_TEXT = {
       height: "E.g. 600px or 80vh. Empty = automatic height.",
       edit_positions: "Drag the values and flows on the card, then copy the generated YAML.",
       names: "Leave empty to use the default name.",
+      weather: "Shows the sun, moon, clouds, rain or snow around the house. Night comes from sun.sun.",
       home_includes_car: "On: the car's charging is taken off the Home value. Turn off if your home sensor already leaves the car out.",
       static_flows: "For less capable devices (wall tablets, old phones): shows the flows without animation.",
     },
     languages: { auto: "Same as Home Assistant", en: "English", pt: "Português" },
   },
   pt: {
-    groups: { power: "Potência agora", soc: "Carga das baterias", today: "Totais de hoje (opcional)", names: "Nomes", colors: "Cores da casa", options: "Opções" },
+    groups: { power: "Potência agora", soc: "Carga das baterias", today: "Totais de hoje (opcional)", weather: "Tempo", names: "Nomes", colors: "Cores da casa", options: "Opções" },
     labels: {
       solar_power: "Produção solar", home_power: "Consumo da casa", grid_power: "Rede elétrica", battery_power: "Bateria da casa",
       car_power: "Carregamento do carro", battery_soc: "Carga da bateria da casa (SOC)", car_soc: "Carga do carro (SOC)", car_plugged: "Carro ligado à tomada",
       solar_energy_today: "Produzido hoje", home_energy_today: "Consumido hoje", grid_import_today: "Importado hoje",
       grid_export_today: "Exportado hoje", car_energy_today: "Carro hoje",
-      walls_color: "Paredes", deck_color: "Alpendre", car_color: "Carro",
+      weather: "Tempo", walls_color: "Paredes", deck_color: "Alpendre", car_color: "Carro",
       invert_grid: "Inverter sinal da rede", invert_battery: "Inverter sinal da bateria", home_includes_car: "Consumo da casa inclui o carro", show_vegetation: "Mostrar jardim",
       full_screen: "Ocupar o ecrã todo", height: "Altura do card", flow_threshold: "Mínimo para animar o fluxo",
       edit_positions: "Modo de posicionamento", language: "Língua", static_flows: "Fluxos estáticos",
@@ -1026,6 +1167,7 @@ const EDITOR_TEXT = {
       height: "Ex.: 600px ou 80vh. Vazio = altura automática.",
       edit_positions: "Arrasta os valores e os fluxos no card e copia o YAML gerado.",
       names: "Se ficar vazio, usa o nome por defeito.",
+      weather: "Mostra sol, lua, nuvens, chuva ou neve à volta da casa. A noite vem do sun.sun.",
       home_includes_car: "Ligado: o carregamento do carro é descontado ao valor da Casa. Desliga se o teu sensor da casa já não inclui o carro.",
       static_flows: "Para dispositivos menos capazes (tablets de parede, telemóveis antigos): mostra os fluxos sem animação.",
     },
@@ -1062,6 +1204,10 @@ function editorSchema(et) {
         { name: "grid_export_today", selector: ENERGY },
         { name: "car_energy_today", selector: ENERGY },
       ],
+    },
+    {
+      type: "expandable", flatten: true, title: et.groups.weather, icon: "mdi:weather-partly-cloudy",
+      schema: [{ name: "weather", selector: { entity: { filter: [{ domain: "weather" }] } } }],
     },
     {
       type: "expandable", flatten: true, title: et.groups.names, icon: "mdi:form-textbox",
