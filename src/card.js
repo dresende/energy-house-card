@@ -1,5 +1,5 @@
-/*! energy-house-card v2.4.1 */
-const VERSION = "2.4.1";
+/*! energy-house-card v2.5.0 */
+const VERSION = "2.5.0";
 const HOUSE_SVG = "__HOUSE_SVG__";
 const VB = { x: 170, y: 40, w: 960, h: 590 };
 const HUB = [43.2, 51.7];
@@ -607,8 +607,15 @@ class EnergyHouseCard extends HTMLElement {
     if (!this._els) return;
     const powers = {};
     for (const role of Object.keys(ROLES)) powers[role] = this._power(role);
-    const routed = routeEnergy(powers);
-    if (powers.home == null && (powers.solar != null || powers.grid != null)) powers.home = routed.load;
+    // flows run on the total load; the Home badge shows the house without the car,
+    // which has its own badge (`home_includes_car: false` when the sensor already leaves it out)
+    const carW = Math.max(0, powers.car ?? 0);
+    const includesCar = this._config.home_includes_car !== false;
+    const routed = routeEnergy({ ...powers, home: powers.home != null && !includesCar ? powers.home + carW : powers.home });
+    let total = null;
+    if (powers.home != null) total = includesCar ? powers.home : null;
+    else if (powers.solar != null || powers.grid != null) total = routed.load;
+    if (total != null) powers.home = Math.max(0, total - carW);
 
     const dark = !!this._hass?.themes?.darkMode;
     this.toggleAttribute("dark", dark);
@@ -982,7 +989,7 @@ const EDITOR_TEXT = {
       solar_energy_today: "Produced today", home_energy_today: "Consumed today", grid_import_today: "Imported today",
       grid_export_today: "Exported today", car_energy_today: "Car today",
       walls_color: "Walls", deck_color: "Deck", car_color: "Car",
-      invert_grid: "Invert grid sign", invert_battery: "Invert battery sign", show_vegetation: "Show garden",
+      invert_grid: "Invert grid sign", invert_battery: "Invert battery sign", home_includes_car: "Home consumption includes the car", show_vegetation: "Show garden",
       full_screen: "Fill the screen", height: "Card height", flow_threshold: "Minimum to animate a flow",
       edit_positions: "Positioning mode", language: "Language", static_flows: "Static flows",
     },
@@ -994,6 +1001,7 @@ const EDITOR_TEXT = {
       height: "E.g. 600px or 80vh. Empty = automatic height.",
       edit_positions: "Drag the values and flows on the card, then copy the generated YAML.",
       names: "Leave empty to use the default name.",
+      home_includes_car: "On: the car's charging is taken off the Home value. Turn off if your home sensor already leaves the car out.",
       static_flows: "For less capable devices (wall tablets, old phones): shows the flows without animation.",
     },
     languages: { auto: "Same as Home Assistant", en: "English", pt: "Português" },
@@ -1006,7 +1014,7 @@ const EDITOR_TEXT = {
       solar_energy_today: "Produzido hoje", home_energy_today: "Consumido hoje", grid_import_today: "Importado hoje",
       grid_export_today: "Exportado hoje", car_energy_today: "Carro hoje",
       walls_color: "Paredes", deck_color: "Alpendre", car_color: "Carro",
-      invert_grid: "Inverter sinal da rede", invert_battery: "Inverter sinal da bateria", show_vegetation: "Mostrar jardim",
+      invert_grid: "Inverter sinal da rede", invert_battery: "Inverter sinal da bateria", home_includes_car: "Consumo da casa inclui o carro", show_vegetation: "Mostrar jardim",
       full_screen: "Ocupar o ecrã todo", height: "Altura do card", flow_threshold: "Mínimo para animar o fluxo",
       edit_positions: "Modo de posicionamento", language: "Língua", static_flows: "Fluxos estáticos",
     },
@@ -1018,6 +1026,7 @@ const EDITOR_TEXT = {
       height: "Ex.: 600px ou 80vh. Vazio = altura automática.",
       edit_positions: "Arrasta os valores e os fluxos no card e copia o YAML gerado.",
       names: "Se ficar vazio, usa o nome por defeito.",
+      home_includes_car: "Ligado: o carregamento do carro é descontado ao valor da Casa. Desliga se o teu sensor da casa já não inclui o carro.",
       static_flows: "Para dispositivos menos capazes (tablets de parede, telemóveis antigos): mostra os fluxos sem animação.",
     },
     languages: { auto: "Igual ao Home Assistant", en: "English", pt: "Português" },
@@ -1072,6 +1081,7 @@ function editorSchema(et) {
         { name: "language", selector: { select: { mode: "dropdown", options: ["auto", "en", "pt"].map((v) => ({ value: v, label: et.languages[v] })) } } },
         { name: "invert_grid", selector: { boolean: {} } },
         { name: "invert_battery", selector: { boolean: {} } },
+        { name: "home_includes_car", selector: { boolean: {} } },
         { name: "show_vegetation", selector: { boolean: {} } },
         { name: "full_screen", selector: { boolean: {} } },
         { name: "height", selector: { text: {} } },
@@ -1112,6 +1122,7 @@ class EnergyHouseCardEditor extends HTMLElement {
       flow_threshold: c.flow_threshold ?? 10,
       edit_positions: !!c.edit_positions,
       static_flows: !!c.static_flows,
+      home_includes_car: c.home_includes_car !== false,
     };
   }
 
@@ -1145,6 +1156,8 @@ class EnergyHouseCardEditor extends HTMLElement {
       if (v[k]) config[k] = true;
       else delete config[k];
     }
+    if (v.home_includes_car === false) config.home_includes_car = false;
+    else delete config.home_includes_car;
     if (v.height) config.height = v.height;
     else delete config.height;
     if (v.flow_threshold != null && v.flow_threshold !== 10) config.flow_threshold = v.flow_threshold;

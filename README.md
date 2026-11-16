@@ -69,6 +69,8 @@ entities:
 
 If your grid or battery uses the opposite sign, add `invert_grid: true` or `invert_battery: true`. Without `home_power`, consumption is calculated from solar + battery + grid.
 
+The car has its own block, so the Home block shows the house without the car: `home_power − car_power`. If your home sensor already leaves the car out (for example, the charger is on a separately metered circuit), add `home_includes_car: false`.
+
 ## Options
 
 | Option | Default | What it does |
@@ -79,6 +81,7 @@ If your grid or battery uses the opposite sign, add `invert_grid: true` or `inve
 | `height` | — | Fixed height, e.g. `600px` or `80vh`; the house grows to fit |
 | `colors` | white walls | House colours: `walls`, `deck` and `car`, in hex, e.g. `colors: { walls: "#3b4148", car: "#1f3a6b" }`. Each face's shading is derived from the colour you pick |
 | `show` | from the entities | Parts of the drawing: `solar`, `battery`, `car`, `grid`, `vegetation` (e.g. `show: { vegetation: false }`) |
+| `home_includes_car` | `true` | `home_power` includes the car's charging, so it is taken off the Home value. Set `false` if your sensor already leaves the car out |
 | `static_flows` | `false` | For less capable devices (wall tablets, old phones): flows are drawn in their colours and direction, without animation, glow or blur. Also applies automatically when the device asks for reduced motion |
 | `flow_threshold` | `10` | Below this many watts a flow stays still |
 | `edit_positions` | `false` | Turns on positioning mode (see below) |
