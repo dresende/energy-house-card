@@ -10,11 +10,15 @@ A Home Assistant card that shows your home's energy on an isometric house, with 
 
 ## Install
 
-### HACS
+### HACS (recommended)
 
-1. In **HACS → ⋮ → Custom repositories**, add `https://github.com/dresende/energy-house-card` with type **Dashboard**.
-2. Search for "Energy House Card" in HACS and install it.
+[![Open in HACS](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=dresende&repository=energy-house-card&category=plugin)
+
+1. Open **HACS** in Home Assistant, search for **Energy House Card** and open it (or use the button above).
+2. Press **Download** and confirm.
 3. Reload the browser and add the card to a dashboard.
+
+HACS adds the dashboard resource for you, so there is nothing else to configure.
 
 ### Manual
 
@@ -172,7 +176,7 @@ To see the card without Home Assistant, run `python3 -m http.server` in the fold
 
 Card para o Home Assistant com uma casa isométrica e os fluxos de energia animados entre painéis solares, bateria, casa, carro e rede. O card segue a língua do Home Assistant: em português, todos os textos (card e editor visual) aparecem em português. Para forçar, usa `language: pt`.
 
-- **Instalar:** em HACS → ⋮ → Repositórios personalizados, adiciona `https://github.com/dresende/energy-house-card` com o tipo **Dashboard**.
+- **Instalar:** no HACS, procura **Energy House Card**, carrega em **Download** e recarrega o browser.
 - **Configurar:** pelo editor visual, que pré-preenche os sensores.
 - **Mudar os nomes dos blocos:** no grupo "Nomes" do editor, ou com `names:` no YAML.
 
