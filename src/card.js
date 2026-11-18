@@ -1,5 +1,5 @@
-/*! energy-house-card v2.6.0 */
-const VERSION = "2.6.0";
+/*! energy-house-card v2.6.1 */
+const VERSION = "2.6.1";
 const HOUSE_SVG = "__HOUSE_SVG__";
 const VB = { x: 170, y: 40, w: 960, h: 590 };
 const HUB = [43.2, 51.7];
@@ -685,7 +685,9 @@ class EnergyHouseCard extends HTMLElement {
       if (this._config.edit_positions) {
         el.addEventListener("pointerdown", (e) => this._startDrag(e, { type: "place", place, el }));
       } else {
-        el.addEventListener("click", () => this._moreInfo(place.entity));
+        // battery and car: the SOC history says more than the charge power
+        const soc = (place.role === "battery" || place.role === "car") && place.secondary;
+        el.addEventListener("click", () => this._moreInfo(soc || place.entity));
       }
     });
   }
